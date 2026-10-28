@@ -6,7 +6,7 @@ services:
     runtime: node
     plan: starter                     # free tier sleeps; a WhatsApp bot must not
     rootDir: whatsapp-bot
-    buildCommand: npm install --omit=dev
+    buildCommand: npm ci --omit=dev
     startCommand: node --dns-result-order=ipv4first index.js --pair
     healthCheckPath: /healthz
     disk:

@@ -23,7 +23,10 @@ WORKDIR /app
 
 # Install dependencies first so the layer is cached between code changes
 COPY package.json package-lock.json* ./
-RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
+# npm ci gives byte-identical installs from the committed lockfile; fall back
+# to npm install if someone builds without one.
+RUN (npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund) \
+ && npm cache clean --force
 
 # Copy the bot
 COPY . .
