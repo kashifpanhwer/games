@@ -132,6 +132,13 @@ jobs:
               echo "> ### 🔑 \`$code\`" >> "$GITHUB_STEP_SUMMARY"
               echo "> Link a Device ▸ *Link with phone number instead* ▸ type the code." >> "$GITHUB_STEP_SUMMARY"
               echo "> Expires in ~60s; a fresh one is printed below as they rotate." >> "$GITHUB_STEP_SUMMARY"
+
+              # Also publish it as a check-run annotation. Raw logs sit on a
+              # separate CDN that restricted networks cannot reach, but
+              # annotations come from api.github.com, so the code stays readable
+              # programmatically:
+              #   gh api repos/<owner>/<repo>/check-runs/<job_id>/annotations
+              echo "::notice title=PAIRING CODE ${code}::WhatsApp > Settings > Linked Devices > Link a Device > 'Link with phone number instead' > type ${code}. Expires in ~60s; a new annotation appears for each rotated code."
             fi
 
             if [ "$status" = "open" ]; then
