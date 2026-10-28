@@ -20,3 +20,16 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+### Node / JavaScript ###
+node_modules/
+npm-debug.log*
+*.tgz
+.npm/
+
+### Kashif Tech Advance Bot ###
+# WhatsApp session credentials — NEVER commit these
+whatsapp-bot/sessions/
+whatsapp-bot/tmp/
+# Local config with secrets & API keys
+.env
+whatsapp-bot/.env
