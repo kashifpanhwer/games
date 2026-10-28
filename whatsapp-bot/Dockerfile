@@ -33,6 +33,7 @@ RUN mkdir -p /app/sessions /app/tmp /app/logs
 VOLUME ["/app/sessions"]
 
 ENV NODE_ENV=production \
+    NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
     PANEL_HOST=0.0.0.0 \
     PANEL_PORT=3000 \
     AUTH_MODE=pair

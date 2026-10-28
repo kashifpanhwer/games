@@ -14,6 +14,7 @@ import { config } from './config.js';
 import { connState, pushLog, setPairingCode } from './state.js';
 import { handleMessages } from './handler.js';
 import { serialize } from '../lib/functions.js';
+import { buildSocketAgent } from '../lib/tls-agent.js';
 
 /**
  * ─────────────────────────────────────────────────────────────
@@ -69,6 +70,16 @@ export async function startConnection({ forceMode } = {}) {
   connState.lastError = null;
   pushLog('info', `Starting socket (auth mode: ${mode}, session: ${config.sessionDir})`);
 
+  // Hosts such as KataBump re-sign outbound HTTPS with their own root CA.
+  // Node's bundled roots would reject that and the pairing code would never
+  // arrive, so hand Baileys an agent that also trusts the system bundle.
+  const { agent, mode: tlsMode, detail: tlsDetail } = buildSocketAgent();
+  connState.tlsMode = tlsMode;
+  pushLog(tlsMode === 'default' ? 'info' : 'warn', `TLS trust: ${tlsMode} — ${tlsDetail}`);
+  if (tlsMode === 'insecure') {
+    pushLog('error', 'WA_TLS_INSECURE is on: anyone on this network can read the WhatsApp socket. Turn it off once pairing works.');
+  }
+
   const sockConfig = {
     logger,
     auth: state,
@@ -83,6 +94,7 @@ export async function startConnection({ forceMode } = {}) {
     connectTimeoutMs: 60_000,
     qrTimeout: 60_000,
     getMessage: async () => ({ conversation: '' }),
+    ...(agent ? { agent } : {}),
     ...(version ? { version } : {}),
   };
 

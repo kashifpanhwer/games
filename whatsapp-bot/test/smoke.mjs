@@ -13,6 +13,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { execFileSync } from 'node:child_process';
 
 process.env.SESSION_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ktb-test-'));
 process.env.PANEL_ENABLED = 'false';
@@ -435,6 +436,93 @@ await test('the bot exits promptly on SIGTERM', async () => {
 
   assert.notEqual(code, 'KILLED', `SIGTERM did not stop the bot within 10s — PM2/systemd/Docker would have to SIGKILL it. stderr: ${stderr.slice(0, 300)}`);
   assert.ok(ms < 6000, `took ${ms}ms to exit after SIGTERM (should be well under 6000ms)`);
+});
+
+console.log('\n\x1b[36m[8] TLS trust (proxied hosts such as KataBump)\x1b[0m');
+const tlsAgentMod = await import('../lib/tls-agent.js');
+const tlsNode = await import('node:tls');
+
+await test('the default code path is left untouched when no proxy is detected', async () => {
+  const saved = { ...process.env };
+  process.env.WA_TRUST_SYSTEM_CA = 'false';
+  delete process.env.WA_EXTRA_CA;
+  delete process.env.WA_TLS_INSECURE;
+  try {
+    const r = tlsAgentMod.buildSocketAgent();
+    assert.equal(r.mode, 'default', `expected mode "default", got "${r.mode}"`);
+    assert.equal(r.agent, undefined, 'an agent must NOT be built when there is nothing extra to trust');
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+  }
+});
+
+await test('WA_TLS_INSECURE=true switches certificate validation off', async () => {
+  const saved = { ...process.env };
+  process.env.WA_TLS_INSECURE = 'true';
+  try {
+    const r = tlsAgentMod.buildSocketAgent();
+    assert.equal(r.mode, 'insecure');
+    assert.ok(r.agent, 'an agent must exist in insecure mode');
+    assert.equal(r.agent.options.rejectUnauthorized, false, 'rejectUnauthorized must be false');
+  } finally {
+    delete process.env.WA_TLS_INSECURE;
+    Object.assign(process.env, saved);
+  }
+});
+
+await test('a host CA bundle is trusted ALONGSIDE Node’s built-in roots', async () => {
+  // Build a real self-signed certificate so the assertion means something.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ktb-ca-'));
+  const bundle = path.join(dir, 'extra-ca.pem');
+  let made = false;
+  try {
+    execFileSync('openssl', [
+      'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+      '-keyout', path.join(dir, 'k.pem'), '-out', bundle,
+      '-subj', '/CN=Kashif Test Intercepting Root CA',
+    ], { stdio: 'ignore' });
+    made = fs.readFileSync(bundle, 'utf8').includes('BEGIN CERTIFICATE');
+  } catch { /* openssl missing — fall back below */ }
+
+  if (!made) {
+    // No openssl: reuse whatever the system bundle offers. If this machine
+    // trusts exactly the same roots as Node, there is nothing to assert.
+    const sys = tlsAgentMod.findExtraSystemCAs();
+    if (!sys.certs.length) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return; // nothing to prove on this host — not a failure
+    }
+    fs.writeFileSync(bundle, sys.certs.join('\n'));
+  }
+
+  const saved = { ...process.env };
+  process.env.WA_EXTRA_CA = bundle;
+  process.env.WA_TRUST_SYSTEM_CA = 'false';
+  delete process.env.WA_TLS_INSECURE;
+  try {
+    const r = tlsAgentMod.buildSocketAgent();
+    assert.equal(r.mode, 'system-ca', `expected "system-ca", got "${r.mode}"`);
+    assert.ok(r.agent, 'an https.Agent must be returned for Baileys');
+    // `ca` REPLACES Node's default list, so the built-in roots must survive —
+    // otherwise every normal HTTPS host would suddenly stop verifying.
+    const ca = r.agent.options.ca;
+    assert.ok(Array.isArray(ca), 'agent.options.ca must be an array');
+    assert.ok(ca.length > tlsNode.rootCertificates.length,
+      `ca must be a superset of Node's ${tlsNode.rootCertificates.length} roots, got ${ca.length}`);
+    assert.ok(tlsNode.rootCertificates.every((c) => ca.includes(c)),
+      'every built-in Node root must still be present');
+    assert.match(r.detail, /extra root CA/, `detail should describe the bundle, got "${r.detail}"`);
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+await test('tlsSummary() reports a usable one-line status', async () => {
+  const s = tlsAgentMod.tlsSummary().replace(/\x1b\[[0-9;]*m/g, '');
+  assert.match(s, /TLS trust: (default|system-ca|insecure)/, `unexpected summary: ${s}`);
 });
 
 /* ────────────────────────── summary ────────────────────────── */

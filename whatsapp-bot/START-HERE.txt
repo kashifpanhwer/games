@@ -89,6 +89,73 @@ aur har machine par alag banta hai) — `npm install` use khud bana dega.
   (sessions/ volume par mount hai, isliye restart par login nahi jayega)
 
 
+────────────────────────────────────────────────────────────────────
+ 🅳  KATABUMP (FREE HOSTING) PAR
+────────────────────────────────────────────────────────────────────
+
+  dashboard.katabump.com ▸ server banayein ▸ Node.js ▸ Free plan
+
+  1. File Manager ▸ ye ZIP upload karein ▸ right-click ▸ Extract
+     (files /home/container/ mein honi chahiye)
+  2. Startup tab ▸ start command:
+         node --dns-result-order=ipv4first /home/container/index.js --pair
+     aur Node 20+ select karein
+  3. Environment tab ▸ ye variables add karein:
+         PAIRING_NUMBER      = 923145396910
+         OWNER_NUMBER        = 923145396910
+         PANEL_TOKEN         = koi random value (kashiftech NAHI)
+         NODE_EXTRA_CA_CERTS = /etc/ssl/certs/ca-certificates.crt
+  4. Console ▸ Start. Pehli baar KataBump khud npm install karega.
+  5. Pairing code Console tab mein aayega.
+
+  ⚠️ KATABUMP KI 4 BAATEIN:
+    • 308 MB RAM kam hai — OOM ho to PANEL_ENABLED=false kar dein
+    • Sirf EK public port milta hai — bot khud SERVER_PORT/PORT padh leta
+      hai, isliye PANEL_PORT set na karein
+    • Har 4 DIN mein Renew dabana zaroori hai, warna server + sessions/
+      delete ho jate hain aur dobara pair karna padega
+    • ffmpeg nahi hai aur root nahi — bundled npm ffmpeg se stickers chale
+      gein, lekin video conversion 25% CPU par slow hoga
+
+  🔑 SABSE AHEM: KataBump outbound HTTPS ko apne "Kata Root CA" se
+     dobara sign karta hai. Node us CA ko nahi janta, isliye aam bots
+     "unable to verify the first certificate" par mar jate hain aur code
+     kabhi nahi aata. YE BOT KHUD HANDLE KARTA HAI — lib/tls-agent.js
+     system ka CA bundle padh kar Baileys ko ek https.Agent deta hai.
+     Upar wala NODE_EXTRA_CA_CERTS backup hai.
+
+
+────────────────────────────────────────────────────────────────────
+ 🅴  GITHUB ACTIONS
+────────────────────────────────────────────────────────────────────
+
+  Is ZIP mein .github/workflows/ bhi shamil hai. Agar aap ye folder kisi
+  GitHub repo ke ROOT mein extract karein to workflows khud kaam karne
+  lagenge:
+
+    • CI (ci.yml) — har push/PR par: npm ci → npm test (44 checks) →
+      preview → doctor → asli WebSocket test web.whatsapp.com par.
+      GitHub runners ka internet khula hota hai, isliye ye PROOF hai ke
+      code pairing code hasil kar sakta hai.
+
+    • Get pairing code (pairing-code.yml) — SIRF manual:
+        Actions ▸ "Get pairing code (one-shot)" ▸ Run workflow
+      Code log aur job summary dono mein print hota hai, aur 10 minute
+      tak intezaar karta hai ke aap phone link karein.
+
+  ⚠️ Ye HOSTING NAHI hai:
+    • Job khatam hone par runner delete ho jata hai → bot offline
+    • Har run nayi VM par hota hai → sessions/ survive nahi karta
+    • Schedule (cron) par MAT lagana — GitHub ki terms Actions ko sirf
+      "production, testing, deployment, publication" tak mehdood karti
+      hain. Permanently chalta bot unke khilaf hai → account suspend
+      ho sakta hai. Isliye workflow manual-only rakha gaya hai.
+    • upload_session ON karne par aapki WhatsApp credentials artifact
+      mein chali jati hain. PUBLIC repo par koi bhi unhe download kar
+      sakta hai = account hijack. Sirf private repo par, aur turant
+      artifact delete karein.
+
+
 ════════════════════════════════════════════════════════════════════
  ⚠️  ZAROORI BAATEIN
 ════════════════════════════════════════════════════════════════════
@@ -129,7 +196,7 @@ aur har machine par alag banta hai) — `npm install` use khud bana dega.
   README.md                 poori documentation (English)
 
   src/                      core: connection, handler, database, panel, state
-  lib/                      buttons, converter (ffmpeg), scraper, uploader
+  lib/                      buttons, converter (ffmpeg), scraper, uploader, tls-agent
   plugins/                  11 files → 121 commands, 365 triggers
   scripts/                  doctor, Termux installer, menu preview, session clean
   deploy/                   systemd unit, Render blueprint, Railway config
@@ -138,7 +205,7 @@ aur har machine par alag banta hai) — `npm install` use khud bana dega.
   Dockerfile                Docker image
   docker-compose.yml        Docker Compose stack
   Procfile                  PaaS (Heroku/Render/Railway)
-  test/smoke.mjs            40 offline tests (npm test)
+  test/smoke.mjs            44 offline tests (npm test)
 
 
 ════════════════════════════════════════════════════════════════════
@@ -148,7 +215,7 @@ aur har machine par alag banta hai) — `npm install` use khud bana dega.
   npm run pair        pairing code ke saath start karein
   npm run qr          QR code scan karke login karein
   npm run doctor      network + config check (16 checks)
-  npm test            40 offline tests chalayein
+  npm test            44 offline tests chalayein
   npm run preview     button menu ko bina connect kiye dekhein
   npm run clean       session delete karein (dobara pair karne ke liye)
   npm run panel       sirf web panel, WhatsApp connect nahi

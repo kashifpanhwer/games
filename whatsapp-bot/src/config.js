@@ -53,7 +53,15 @@ export const config = {
   // ---- panel ----
   panelEnabled: bool(process.env.PANEL_ENABLED, true),
   panelHost: process.env.PANEL_HOST || '0.0.0.0',
-  panelPort: int(process.env.PANEL_PORT, 3000),
+  // Pterodactyl-style panels (KataBump) expose SERVER_PORT; Render, Railway
+  // and Heroku inject PORT. Either one wins over PANEL_PORT so the dashboard
+  // lands on the single public port the host actually gave you.
+  panelPort: int(
+    process.env.PANEL_PORT
+    || process.env.SERVER_PORT
+    || process.env.PORT,
+    3000,
+  ),
   panelToken: process.env.PANEL_TOKEN || 'kashiftech',
 
   // ---- menu ----

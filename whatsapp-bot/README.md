@@ -17,7 +17,7 @@ It logs in with an **8-character pairing code** (no QR scan needed), drives ever
 | **Menu categories** | 11 |
 | **Runtime** | Node.js ≥ 20 (ESM) |
 | **Login** | Pairing code *(default)* or QR |
-| **Tests** | `npm test` → 40 offline checks (incl. a real SIGTERM lifecycle test) |
+| **Tests** | `npm test` → 44 offline checks (incl. SIGTERM lifecycle + TLS-trust tests) |
 
 ---
 
@@ -255,6 +255,91 @@ Two things matter:
 > ⚠️ Free tiers that sleep (Render free, Railway trial, Heroku free is gone) will drop the
 > WhatsApp connection whenever the dyno idles. Use a paid/starter plan.
 
+### 🆓 KataBump (free bot hosting) — works, with caveats
+
+[KataBump](https://dashboard.katabump.com) is a free container host that explicitly
+supports WhatsApp bots. Free tier: **308 MB RAM · 716 MB disk · 25% of one core ·
+one public port · no root**, and you must click **Renew every 4 days** or the server is
+suspended and **deleted one day later** — including your `sessions/` login.
+
+Deploy:
+
+1. Dashboard ▸ create a server ▸ **Node.js** ▸ Free plan
+2. File Manager ▸ upload `KashifTechAdvanceBot.zip` ▸ right-click ▸ **Extract**
+   (or SFTP the folder in). Files must live in `/home/container/`.
+3. **Startup** tab ▸ set the start command to
+   `node --dns-result-order=ipv4first /home/container/index.js --pair`
+   and pick Node 20+
+4. **Environment** tab ▸ add:
+   | Key | Value |
+   |---|---|
+   | `PAIRING_NUMBER` | `923145396910` |
+   | `OWNER_NUMBER` | `923145396910` |
+   | `PANEL_TOKEN` | something random, not `kashiftech` |
+   | `NODE_EXTRA_CA_CERTS` | `/etc/ssl/certs/ca-certificates.crt` |
+5. Console ▸ **Start**. On the first start KataBump runs `npm install` for you.
+6. The pairing code prints in the **Console** tab.
+
+> 🔑 **The one thing that breaks WhatsApp bots on KataBump**
+> KataBump intercepts outbound HTTPS and re-signs it with its own **`Kata Root CA`**.
+> Node.js does *not* read `/etc/ssl/certs` — it ships a frozen list of root CAs — so the
+> socket to `web.whatsapp.com` dies mid-handshake with
+> `unable to verify the first certificate`, and **no pairing code is ever issued**.
+>
+> This bot handles it two ways:
+> - `NODE_EXTRA_CA_CERTS` (step 4 above), and
+> - **automatically**: `lib/tls-agent.js` reads the system bundle, keeps Node's own roots
+>   and hands Baileys an `https.Agent` that trusts both. Baileys forwards it to
+>   `new WebSocket(url, { agent })`.
+>
+> `npm run doctor` prints `TLS trust mode: system-ca` when it detects this, and retries the
+> handshake with the system bundle so a proxied host is reported as **working**, not broken.
+
+**Other KataBump realities:**
+
+- **308 MB RAM is tight.** Set `PANEL_ENABLED=false` to reclaim ~30 MB if you see OOM
+  restarts, and read the code from the Console log instead of the web panel.
+- **One public port only.** The panel must bind to the port KataBump assigned — the bot
+  already reads `SERVER_PORT` (Pterodactyl convention) and `PORT`, so leave `PANEL_PORT`
+  unset and it will pick the right one. Claim the free `yourname.kdns.fr` domain to reach it.
+- **No ffmpeg by default**, and no root to install it. Stickers and `.tomp3`/`.togif` need
+  ffmpeg; the bundled `@ffmpeg-installer` npm binary usually works, but heavy video
+  conversion on 25% of a core is slow. Text/menu/downloader commands are unaffected.
+- **Renew every 4 days.** Miss it and `sessions/` is deleted → you re-pair. Download a
+  backup of `sessions/` regularly (File Manager ▸ download).
+
+### 🤖 GitHub Actions
+
+Two workflows live in `.github/workflows/`:
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| **CI** (`ci.yml`) | every push & PR | `npm ci` → `npm test` (44 checks) → `npm run preview` → `npm run doctor` → a real WebSocket upgrade to `wss://web.whatsapp.com/ws/chat` |
+| **Get pairing code** (`pairing-code.yml`) | **manual only** — *Actions ▸ Get pairing code ▸ Run workflow* | boots the bot on a runner, prints the 8-character code in the log **and** in the job summary, waits up to 10 min for you to link your phone, then stops |
+
+The CI job is the useful proof: GitHub runners have **unrestricted internet**, so the TLS
+handshake that a sandbox blocks succeeds there. A green CI run means the code is capable of
+obtaining a pairing code on a normal network.
+
+The pairing workflow is a **one-shot auth test, not hosting**:
+
+- The runner is destroyed when the job ends, so the bot goes offline with it. Deploy for
+  real on a VPS / KataBump / Render / Docker / Termux.
+- With `upload_session` enabled it saves `sessions/` as a 1-day artifact so you can drop the
+  credentials onto your real host without re-pairing. 🔐 **On a public repository anyone can
+  download artifacts — that is full control of the WhatsApp account. Only enable it on a
+  private repo, and delete the artifact immediately.**
+- **Do not put it on a schedule.** GitHub's terms restrict Actions to "the production,
+  testing, deployment, or publication of the software project associated with the
+  repository"; a permanently-running bot is outside that, and misuse can mean terminated
+  jobs, restricted Actions, a disabled repository, or a suspended account. Both workflows
+  are `timeout-minutes` capped and the pairing one is manual-only for exactly this reason.
+- Jobs are hard-capped at **6 hours** and every run starts on a **fresh VM** — nothing on
+  disk survives, which is why `sessions/` must be an artifact or a mounted volume.
+
+> Note: `workflow_dispatch` buttons only appear once the workflow is on the repository's
+> **default branch**, so merge the PR before expecting to click "Run workflow".
+
 ### ⚠️ Shared hosting will NOT work
 
 cPanel-style shared hosting (basic Hostinger/Namecheap/GoDaddy shared plans) kills
@@ -456,7 +541,7 @@ node index.js --panel-only              # dashboard without connecting to WhatsA
 npm test
 ```
 
-40 checks run against a **mock WhatsApp socket** — no internet, no account, no risk
+44 checks run against a **mock WhatsApp socket** — no internet, no account, no risk
 (except the last one, which really spawns the bot and SIGTERMs it to prove PM2, systemd
 and Docker can stop it cleanly):
 
@@ -470,7 +555,7 @@ and Docker can stop it cleanly):
 - the whole ffmpeg sticker pipeline
 
 ```
-✅ 40/40 checks passed
+✅ 44/44 checks passed
 Bot ready: 121 plugins · 365 triggers · 11 menu categories
 ```
 
@@ -494,6 +579,7 @@ whatsapp-bot/
 │   └── call-events.js       anti-call
 ├── lib/
 │   ├── buttons.js           interactiveMessage builder + fallback
+│   ├── tls-agent.js          trust a host's CA bundle (KataBump / Zscaler TLS MITM)
 │   ├── converter.js         ffmpeg: stickers, mp3, EXIF/RIFF writer
 │   ├── functions.js         helpers + the message serialiser
 │   ├── scraper.js           TikTok, YouTube, IG, FB, X, Islamic, translate…
@@ -528,7 +614,7 @@ whatsapp-bot/
 | `npm run termux` | Run the Termux installer |
 | `bash deploy.sh` | One-command VPS/hosting setup (PM2 / systemd / Docker / nohup) |
 | `npm run preview` | Render the button menu offline |
-| `npm test` | 40 offline checks against a mock socket |
+| `npm test` | 44 offline checks against a mock socket |
 | `npm run clean` | Delete the session so you can re-pair |
 
 ---

@@ -18,6 +18,7 @@ import tls from 'node:tls';
 import dns from 'node:dns/promises';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { findExtraSystemCAs, buildSocketAgent } from '../lib/tls-agent.js';
 
 const C = {
   reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[90m',
@@ -147,9 +148,22 @@ if (ff) {
 
 /* ═══════════ 5. NETWORK — THE DECISIVE PART ═══════════ */
 console.log(head('5. NETWORK TO WHATSAPP'));
-console.log(`   ${C.dim}This is where pairing-code problems always live. Each step must pass.${C.reset}`);
+
+// What will the bot actually trust when it dials out?
+const tlsAgent = buildSocketAgent();
+console.log(`   ${C.dim}TLS trust mode: ${tlsAgent.mode} — ${tlsAgent.detail}${C.reset}`);
+if (tlsAgent.mode === 'system-ca') {
+  console.log(`   ${warn(`the system CA bundle holds root(s) Node does not ship — the bot will trust both.`)}`);
+  console.log(`     ${C.dim}this is what makes TLS-intercepting hosts (KataBump, Zscaler, corporate proxies) work.${C.reset}`);
+  console.log(`     ${C.dim}interception is only CONFIRMED below if a handshake fails with Node's roots and succeeds with the bundle.${C.reset}`);
+}
+if (tlsAgent.mode === 'insecure') {
+  console.log(`   ${warn('WA_TLS_INSECURE=true — certificate validation is OFF. Do not leave it on.')}`);
+}
 
 let netOk = true;
+const mitmHosts = [];
+console.log(`   ${C.dim}This is where pairing-code problems always live. Each step must pass.${C.reset}`);
 
 for (const { host, port, why } of WA_HOSTS) {
   // 5a DNS
@@ -187,27 +201,63 @@ for (const { host, port, why } of WA_HOSTS) {
   record(`TCP ${target}:${port}`, tcpOk, 'socket established');
 
   // 5c TLS — the check that separates "port open" from "actually usable"
+  const family = v4[0] ? 4 : 6;
+  const handshake = (ca) => withTimeout(new Promise((res, rej) => {
+    const s = tls.connect({
+      host: target, port, servername: host, family,
+      rejectUnauthorized: true, ...(ca ? { ca } : {}),
+    });
+    s.once('secureConnect', () => {
+      const cert = s.getPeerCertificate();
+      res({ issuer: cert?.issuer?.O || cert?.issuer?.CN, subject: cert?.subject?.CN, protocol: s.getProtocol() });
+      s.destroy();
+    });
+    s.once('error', rej);
+  }), 10000, 'TLS');
+
   let tlsInfo = null;
+  let mitmInfo = null;
   try {
-    tlsInfo = await withTimeout(new Promise((res, rej) => {
-      const s = tls.connect({ host: target, port, servername: host, family: v4[0] ? 4 : 6, rejectUnauthorized: true });
-      s.once('secureConnect', () => {
-        const cert = s.getPeerCertificate();
-        const info = { issuer: cert?.issuer?.O, subject: cert?.subject?.CN, protocol: s.getProtocol() };
-        s.destroy(); res(info);
-      });
-      s.once('error', rej);
-    }), 10000, 'TLS');
+    tlsInfo = await handshake();
   } catch (e) {
-    record(`TLS handshake: ${host}`, false,
-      `${e.message}  ${C.dim}(TCP opened but the encrypted handshake was killed — this is a sandbox/firewall TLS block)${C.reset}`,
-      'The machine running the bot must be allowed to complete TLS to WhatsApp. ' +
-      'Sandboxes, CI runners and some corporate/ISP filters do exactly this. ' +
-      'Run the bot on your own phone (Termux), PC or VPS instead.');
-    netOk = false;
+    // A TLS-intercepting host (KataBump's "Kata Root CA", Zscaler, Bluecoat,
+    // corporate gateways) re-signs every HTTPS response with its own root.
+    // Node ships a frozen root list and cannot see it, so the handshake is
+    // rejected even though the network is perfectly fine. Retry with the
+    // system CA bundle — that is exactly what lib/tls-agent.js does at runtime.
+    const { certs } = findExtraSystemCAs();
+    if (certs.length) {
+      try {
+        mitmInfo = await handshake([...tls.rootCertificates, ...certs]);
+      } catch { mitmInfo = null; }
+    }
+    if (!mitmInfo) {
+      record(`TLS handshake: ${host}`, false,
+        `${e.message}  ${C.dim}(TCP opened but the encrypted handshake was killed — this is a sandbox/firewall TLS block)${C.reset}`,
+        'The machine running the bot must be allowed to complete TLS to WhatsApp. ' +
+        'Sandboxes, CI runners and some corporate/ISP filters do exactly this. ' +
+        'Run the bot on your own phone (Termux), PC or VPS instead.');
+      netOk = false;
+      continue;
+    }
+  }
+
+  const info = mitmInfo || tlsInfo;
+  if (mitmInfo) {
+    record(`TLS handshake: ${host}`, true,
+      `${info.protocol} — certificate re-signed by "${info.issuer}" ${C.dim}(this host intercepts TLS)${C.reset}`,
+      `Your host proxies HTTPS with its own root CA, which plain Node rejects. ` +
+      `The bot already handles this: lib/tls-agent.js trusts the ${certCount()} extra root(s) in the system bundle. ` +
+      `If it still fails, set NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt.`);
+    mitmHosts.push(host);
     continue;
   }
-  record(`TLS handshake: ${host}`, true, `${tlsInfo.protocol} — cert issued by ${tlsInfo.issuer}`);
+  record(`TLS handshake: ${host}`, true, `${info.protocol} — cert issued by ${info.issuer}`);
+}
+
+/** how many roots beyond Node's own the system bundle adds */
+function certCount() {
+  return findExtraSystemCAs().certs.length || 'system';
 }
 
 // 5d the real WebSocket upgrade Baileys performs
@@ -218,6 +268,7 @@ if (netOk) {
       const ws = new WebSocket('wss://web.whatsapp.com/ws/chat', {
         headers: { Origin: 'https://web.whatsapp.com' },
         handshakeTimeout: 12000,
+        ...(tlsAgent.agent ? { agent: tlsAgent.agent } : {}), // same agent the bot uses
       });
       ws.once('open', () => { ws.terminate(); res('open'); });
       ws.once('unexpected-response', (_r, response) => { ws.terminate(); rej(new Error(`HTTP ${response.statusCode} instead of a WebSocket upgrade`)); });
@@ -235,8 +286,12 @@ if (netOk) {
 
 /* ═══════════ 6. PANEL PORT ═══════════ */
 console.log(head('6. WEB PANEL'));
-// process.env wins over .env so `PANEL_PORT=3111 npm run doctor` is honoured
-const port = parseInt(process.env.PANEL_PORT || env.PANEL_PORT || '3000', 10);
+// process.env wins over .env so `PANEL_PORT=3111 npm run doctor` is honoured.
+// SERVER_PORT (Pterodactyl/KataBump) and PORT (Render/Railway/Heroku) count too,
+// because that is the single public port the host actually gave you.
+const port = parseInt(
+  process.env.PANEL_PORT || process.env.SERVER_PORT || process.env.PORT
+  || env.PANEL_PORT || env.SERVER_PORT || env.PORT || '3000', 10);
 const bindHost = process.env.PANEL_HOST || env.PANEL_HOST || '0.0.0.0';
 const portFree = await new Promise((res) => {
   const s = net.createServer();
@@ -258,6 +313,10 @@ const W = 60;
 console.log(`\n${C.bold}${'═'.repeat(W)}${C.reset}`);
 if (!failed.length) {
   console.log(`${C.green}${C.bold}  ✅ ALL CLEAR — this machine can obtain a pairing code.${C.reset}`);
+  if (mitmHosts.length) {
+    console.log(`\n  ${C.yellow}Note:${C.reset} ${C.dim}this host intercepts TLS (${mitmHosts.join(', ')}).${C.reset}`);
+    console.log(`  ${C.dim}The bot already trusts the system CA bundle, so that is not a problem.${C.reset}`);
+  }
   console.log(`\n  Run:\n    ${C.cyan}npm run pair${C.reset}\n`);
   console.log(`  Then on the phone:\n    WhatsApp ▸ Settings ▸ Linked Devices ▸ Link a Device\n    ▸ "Link with phone number instead" ▸ type the 8 characters\n`);
 } else {
@@ -270,6 +329,8 @@ if (!failed.length) {
   console.log(`    • Termux on your Android phone   →  ${C.cyan}bash scripts/install-termux.sh${C.reset}`);
   console.log(`    • your own PC / laptop           →  ${C.cyan}npm install && npm run pair${C.reset}`);
   console.log(`    • any VPS (Contabo, DigitalOcean, Hetzner…)  → same command over SSH`);
+  console.log(`    • KataBump / Render / Railway / Docker       → ${C.cyan}bash deploy.sh${C.reset}`);
+  console.log(`    • a GitHub Actions runner (one-shot code)    → ${C.cyan}.github/workflows/pairing-code.yml${C.reset}`);
   console.log(`\n  ${C.dim}A pairing code is issued by WhatsApp's servers, not generated locally.`);
   console.log(`  Any code produced on a machine that cannot complete TLS to${C.reset}`);
   console.log(`  ${C.dim}web.whatsapp.com will be rejected as invalid by the phone.${C.reset}`);

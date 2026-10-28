@@ -13,6 +13,8 @@ services:
       - AUTH_MODE=pair
       - PANEL_HOST=0.0.0.0
       - PANEL_PORT=3000
+      # trust the host CA bundle — needed behind TLS-intercepting networks
+      - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
     env_file:
       - path: .env
         required: false

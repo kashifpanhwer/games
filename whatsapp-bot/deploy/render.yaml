@@ -28,6 +28,8 @@ services:
         sync: false                   # prompts you for the value (kept out of git)
       - key: OWNER_NUMBER
         sync: false
+      - key: NODE_EXTRA_CA_CERTS
+        value: /etc/ssl/certs/ca-certificates.crt
       - key: PANEL_TOKEN
         generateValue: true
       - key: GEMINI_API_KEY

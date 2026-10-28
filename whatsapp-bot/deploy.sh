@@ -97,6 +97,12 @@ fi
 
 mkdir -p sessions tmp logs
 
+# Hosts such as KataBump re-sign outbound HTTPS with their own root CA.
+# Node ignores the system bundle unless told, which breaks the WhatsApp socket.
+for bundle in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/cert.pem; do
+  [ -r "$bundle" ] && export NODE_EXTRA_CA_CERTS="$bundle" && say "trusting the host CA bundle: $bundle" && break
+done
+
 # ── 5. health check ───────────────────────────────────────────
 printf "\n${B}Checking whether this server can reach WhatsApp…${N}\n"
 DOCTOR_OK=1
