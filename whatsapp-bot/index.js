@@ -78,16 +78,27 @@ async function shutdown(signal) {
   if (shuttingDown) process.exit(0);
   shuttingDown = true;
   pushLog('warn', `${signal} received — saving state and closing…`);
+
+  // Hard deadline FIRST. An open SSE/keep-alive connection can make
+  // server.close() wait forever, which would leave PM2, systemd and Docker
+  // unable to stop the bot. Guarantee the process dies within 4 seconds.
+  const hardExit = setTimeout(() => process.exit(0), 4000);
+  hardExit.unref();
+
   try {
     const { flush } = await import('./src/database.js');
-    flush();
-    await stopPanel();
-  } catch { /* ignore */ }
-  setTimeout(() => process.exit(0), 1500);
+    flush();                       // persist users/groups/settings to disk
+    await stopPanel({ force: true });
+  } catch (err) {
+    pushLog('error', `shutdown cleanup failed: ${err?.message || err}`);
+  }
+  clearTimeout(hardExit);
+  process.exit(0);
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGHUP', () => shutdown('SIGHUP'));
 process.on('unhandledRejection', (e) => pushLog('error', `unhandled rejection: ${e?.message || e}`));
 process.on('uncaughtException', (e) => pushLog('error', `uncaught exception: ${e?.message || e}`));
 

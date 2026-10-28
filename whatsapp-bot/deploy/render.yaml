@@ -1,0 +1,34 @@
+# Render blueprint — https://render.com
+# New ▸ Blueprint ▸ point it at this repo, root directory = whatsapp-bot
+services:
+  - type: worker                      # NOT a web service: the bot holds one socket
+    name: kashif-tech-advance-bot
+    runtime: node
+    plan: starter                     # free tier sleeps; a WhatsApp bot must not
+    rootDir: whatsapp-bot
+    buildCommand: npm install --omit=dev
+    startCommand: node --dns-result-order=ipv4first index.js --pair
+    healthCheckPath: /healthz
+    disk:
+      name: kashif-session            # persistent disk keeps the login across deploys
+      mountPath: /opt/render/project/src/whatsapp-bot/sessions
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: SESSION_DIR
+        value: ./sessions
+      - key: PANEL_ENABLED
+        value: "true"
+      - key: PANEL_HOST
+        value: 0.0.0.0
+      - key: PANEL_PORT
+        value: 10000                  # Render requires PORT; set it in the dashboard too
+      - key: PAIRING_NUMBER
+        sync: false                   # prompts you for the value (kept out of git)
+      - key: OWNER_NUMBER
+        sync: false
+      - key: PANEL_TOKEN
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false

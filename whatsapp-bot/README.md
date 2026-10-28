@@ -17,7 +17,7 @@ It logs in with an **8-character pairing code** (no QR scan needed), drives ever
 | **Menu categories** | 11 |
 | **Runtime** | Node.js ≥ 20 (ESM) |
 | **Login** | Pairing code *(default)* or QR |
-| **Tests** | `npm test` → 39 offline checks |
+| **Tests** | `npm test` → 40 offline checks (incl. a real SIGTERM lifecycle test) |
 
 ---
 
@@ -182,6 +182,88 @@ resends the same content as text, so **nobody ever gets a blank message**.
 `.donate` `.state`
 
 > Prefixes `. / ! # ? +` all work. Turn multi-prefix off with `MULTI_PREFIX=false`.
+
+---
+
+## 🌍 Deploy to hosting / VPS
+
+Upload the `whatsapp-bot` folder to your server and run **one command**:
+
+```bash
+bash deploy.sh
+```
+
+It installs Node 20 + ffmpeg, runs `npm install`, writes `.env` (asks for your number,
+generates a random `PANEL_TOKEN`), runs the network doctor, then asks how you want to
+keep the bot alive:
+
+| Choice | What it does | Best for |
+|---|---|---|
+| **1 · PM2** | `pm2 start ecosystem.config.cjs` — auto-restart, logs, `pm2 startup` for reboots | VPS (recommended) |
+| **2 · systemd** | installs `deploy/kashif-bot.service`, enables it on boot | Ubuntu/Debian VPS |
+| **3 · Docker** | `docker compose up -d --build` with a persistent session volume | any container host |
+| **4 · nohup** | plain background process, no extra tools | quick tests |
+| **5 · foreground** | runs in your terminal so you see the code immediately | first run |
+
+### Get the pairing code on a headless server
+
+```bash
+npm run pair                                          # prints it
+curl -s "localhost:3000/api/pairing?token=YOUR_TOKEN" # prints just the code
+pm2 logs kashif-bot                                   # or watch the PM2 log
+journalctl -u kashif-bot -f                           # or the systemd log
+docker logs -f kashif-bot                             # or the container log
+```
+
+### Open the control panel from your browser
+
+```
+http://YOUR_SERVER_IP:3000/?token=YOUR_PANEL_TOKEN
+```
+
+If it does not open, allow the port:
+
+```bash
+ufw allow 3000/tcp                                              # Ubuntu/Debian
+firewall-cmd --add-port=3000/tcp --permanent && firewall-cmd --reload   # CentOS
+```
+
+On cloud VPS (AWS/DO/GCP) also open the port in the **security group / firewall rules**
+in the provider's dashboard — that step is outside the server.
+
+### Container hosts
+
+```bash
+docker build -t kashif-bot .
+docker run -d --name kashif-bot -p 3000:3000 \
+  -v kashif-session:/app/sessions --restart unless-stopped kashif-bot
+```
+
+`/app/sessions` **must** be a volume — it holds your login credentials. Without it you
+will have to re-pair on every restart.
+
+### PaaS (Render / Railway / Fly.io)
+
+`Procfile`, `.node-version`, `deploy/render.yaml` and `deploy/railway.json` are included.
+Two things matter:
+
+1. Run it as a **worker/background service**, not a web service. The bot holds one live
+   WebSocket to WhatsApp; `numReplicas` / instances must be **1**. Scaling it to 2 will
+   get your number logged out.
+2. Attach a **persistent disk** mounted at `sessions/`, or every deploy forces a re-pair.
+
+> ⚠️ Free tiers that sleep (Render free, Railway trial, Heroku free is gone) will drop the
+> WhatsApp connection whenever the dyno idles. Use a paid/starter plan.
+
+### ⚠️ Shared hosting will NOT work
+
+cPanel-style shared hosting (basic Hostinger/Namecheap/GoDaddy shared plans) kills
+long-running processes, has no persistent sockets, and usually no ffmpeg. The bot will
+connect, then get killed within minutes, and your number may be flagged for repeated
+re-registration.
+
+You need one of: a **VPS** ($3-6/mo — Contabo, Hetzner, DigitalOcean, Vultr), a
+**Node PaaS** (Render/Railway/Fly.io starter), **Docker**, or **Termux** on your phone.
 
 ---
 
@@ -374,7 +456,9 @@ node index.js --panel-only              # dashboard without connecting to WhatsA
 npm test
 ```
 
-39 checks run against a **mock WhatsApp socket** — no internet, no account, no risk:
+40 checks run against a **mock WhatsApp socket** — no internet, no account, no risk
+(except the last one, which really spawns the bot and SIGTERMs it to prove PM2, systemd
+and Docker can stop it cleanly):
 
 - plugin loading (zero failures, no duplicate triggers)
 - the menu is a real `interactiveMessage`, titled **KASHIF TECH ADVANCE BOT**
@@ -386,7 +470,7 @@ npm test
 - the whole ffmpeg sticker pipeline
 
 ```
-✅ 39/39 checks passed
+✅ 40/40 checks passed
 Bot ready: 121 plugins · 365 triggers · 11 menu categories
 ```
 
@@ -421,6 +505,15 @@ whatsapp-bot/
 │   ├── doctor.mjs           network + config diagnosis (why no code?)
 │   ├── preview-menu.mjs     render the button menu offline
 │   └── clean-session.js     wipe the session (and optionally the database)
+├── deploy/
+│   ├── kashif-bot.service   systemd unit template
+│   ├── render.yaml          Render blueprint (worker + persistent disk)
+│   └── railway.json         Railway config
+├── deploy.sh                one-command hosting/VPS setup
+├── ecosystem.config.cjs     PM2 process definition
+├── Dockerfile               image with ffmpeg + healthcheck + tini
+├── docker-compose.yml       compose stack with a persistent session volume
+├── Procfile                 PaaS process declaration
 └── test/smoke.mjs           offline test harness
 ```
 
@@ -433,8 +526,9 @@ whatsapp-bot/
 | `npm run panel` | Web dashboard only, no WhatsApp connection |
 | `npm run doctor` | Diagnose config + network + ffmpeg (16 checks) |
 | `npm run termux` | Run the Termux installer |
+| `bash deploy.sh` | One-command VPS/hosting setup (PM2 / systemd / Docker / nohup) |
 | `npm run preview` | Render the button menu offline |
-| `npm test` | 39 offline checks against a mock socket |
+| `npm test` | 40 offline checks against a mock socket |
 | `npm run clean` | Delete the session so you can re-pair |
 
 ---

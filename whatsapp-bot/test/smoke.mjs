@@ -389,6 +389,54 @@ await test('category sub-menus render for every category', async () => {
   }
 });
 
+console.log('\n\x1b[36m[7] Process lifecycle (PM2 / systemd / Docker)\x1b[0m');
+await test('the bot exits promptly on SIGTERM', async () => {
+  const { spawn } = await import('node:child_process');
+  const net = await import('node:net');
+  const PORT = 3199;
+
+  const child = spawn(process.execPath, ['index.js', '--panel-only'], {
+    cwd: process.cwd(),
+    env: { ...process.env, PANEL_ENABLED: 'true', PANEL_PORT: String(PORT) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stderr = '';
+  child.stderr.on('data', (d) => { stderr += d; });
+
+  const portUp = () => new Promise((res) => {
+    const s = net.connect({ host: '127.0.0.1', port: PORT });
+    s.once('connect', () => { s.destroy(); res(true); });
+    s.once('error', () => res(false));
+  });
+
+  // wait up to 12s for the panel to come up
+  let up = false;
+  for (let i = 0; i < 40; i++) {
+    if (child.exitCode !== null) break;
+    if (await portUp()) { up = true; break; }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  assert.ok(up, `child never opened port ${PORT}. stderr: ${stderr.slice(0, 300)}`);
+
+  // open an SSE connection so the panel has a live socket it must not hang on
+  const sse = net.connect({ host: '127.0.0.1', port: PORT });
+  await new Promise((r) => sse.once('connect', r));
+  sse.write(`GET /api/events?token=${config.panelToken} HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n`);
+  await new Promise((r) => setTimeout(r, 400));
+
+  const t0 = Date.now();
+  child.kill('SIGTERM');
+  const code = await new Promise((res) => {
+    const killer = setTimeout(() => { child.kill('SIGKILL'); res('KILLED'); }, 10000);
+    child.once('exit', (c) => { clearTimeout(killer); res(c); });
+  });
+  const ms = Date.now() - t0;
+  sse.destroy();
+
+  assert.notEqual(code, 'KILLED', `SIGTERM did not stop the bot within 10s — PM2/systemd/Docker would have to SIGKILL it. stderr: ${stderr.slice(0, 300)}`);
+  assert.ok(ms < 6000, `took ${ms}ms to exit after SIGTERM (should be well under 6000ms)`);
+});
+
 /* ────────────────────────── summary ────────────────────────── */
 const pass = results.filter((r) => r.ok).length;
 const fail = results.length - pass;

@@ -150,10 +150,24 @@ export function startPanel() {
   return server;
 }
 
-export function stopPanel() {
+/**
+ * Stop the panel. With `force`, open SSE / keep-alive sockets are dropped
+ * immediately so server.close() cannot hang a shutdown (PM2 / systemd /
+ * Docker would otherwise have to SIGKILL the bot).
+ */
+export function stopPanel({ force = false } = {}) {
   return new Promise((resolve) => {
     if (!server) return resolve();
-    server.close(() => resolve());
+    const done = (() => { let n = 0; return () => { if (++n === 1) resolve(); }; })();
+    const killer = setTimeout(() => { server = null; done(); }, 1500);
+    killer.unref?.();
+    try {
+      if (force) {
+        server.closeAllConnections?.();
+        server.closeIdleConnections?.();
+      }
+    } catch { /* older Node */ }
+    server.close(() => { clearTimeout(killer); server = null; done(); });
   });
 }
 

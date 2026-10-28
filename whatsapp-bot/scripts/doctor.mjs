@@ -235,12 +235,14 @@ if (netOk) {
 
 /* ═══════════ 6. PANEL PORT ═══════════ */
 console.log(head('6. WEB PANEL'));
-const port = parseInt(env.PANEL_PORT || '3000', 10);
+// process.env wins over .env so `PANEL_PORT=3111 npm run doctor` is honoured
+const port = parseInt(process.env.PANEL_PORT || env.PANEL_PORT || '3000', 10);
+const bindHost = process.env.PANEL_HOST || env.PANEL_HOST || '0.0.0.0';
 const portFree = await new Promise((res) => {
   const s = net.createServer();
   s.once('error', () => res(false));
   s.once('listening', () => s.close(() => res(true)));
-  s.listen(port, env.PANEL_HOST || '0.0.0.0');
+  s.listen(port, bindHost);
 });
 if (portFree) {
   record(`port ${port} available`, true, 'the control panel can bind');
