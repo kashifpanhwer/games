@@ -59,7 +59,11 @@ fi
 
 # ── 3. dependencies ───────────────────────────────────────────
 say "Installing Node dependencies (first time takes a few minutes)…"
-npm install --omit=dev --no-audit --no-fund || die "npm install failed"
+if [ -f package-lock.json ]; then
+  npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund || die "dependency install failed"
+else
+  npm install --omit=dev --no-audit --no-fund || die "npm install failed"
+fi
 good "dependencies installed"
 
 # ── 4. .env ───────────────────────────────────────────────────
