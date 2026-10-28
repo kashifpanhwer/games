@@ -105,8 +105,13 @@ if (envExists) {
     if (m && !line.trim().startsWith('#')) env[m[1]] = m[2].replace(/^["']|["']$/g, '');
   }
 }
+// A missing .env is NOT a failure — every value has a working built-in default,
+// and the file is gitignored, so a fresh clone or a CI runner never has one.
+// Failing the exit code here contradicted this check's own message ("using
+// built-in defaults") and made the doctor report healthy machines as broken.
 record('.env exists', envExists, envExists ? `${Object.keys(env).length} keys read` : 'using built-in defaults',
-  envExists ? null : 'Run: cp .env.example .env  (the bot still works on defaults, but you cannot edit them)');
+  envExists ? null : 'Run: cp .env.example .env  (the bot still works on defaults, but you cannot edit them)',
+  { critical: false });
 
 /* ═══════════ 3. CONFIG ═══════════ */
 console.log(head('3. CONFIGURATION'));

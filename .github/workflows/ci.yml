@@ -63,13 +63,32 @@ jobs:
       - name: Render the button menu (no WhatsApp connection needed)
         run: npm run preview
 
+      - name: Create .env (it is gitignored, so a fresh checkout has none)
+        run: cp .env.example .env
+
       # Network is expected to WORK on a GitHub runner, so this must pass.
       # If it ever fails here, WhatsApp changed something or the runner is
       # being filtered — either way you want to know before deploying.
       - name: Doctor — real network + TLS handshake to WhatsApp
-        run: npm run doctor
         env:
           NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
+        run: |
+          set +e
+          npm run --silent doctor 2>&1 | tee ../doctor.txt
+          code=${PIPESTATUS[0]}
+          plain=$(sed -e 's/\x1b\[[0-9;]*m//g' ../doctor.txt)
+          # Publish a compact digest as a check-run annotation. Annotations are
+          # readable through api.github.com, unlike raw logs, which sit on a
+          # separate CDN that restricted networks cannot reach.
+          digest=$(printf '%s\n' "$plain" \
+            | grep -E '✖|⚠|DNS:|TCP |TLS handshake|WebSocket upgrade|checks passed|critical' \
+            | head -30 | tr '\n' '|' | cut -c1-900)
+          if [ "$code" -ne 0 ]; then
+            echo "::error title=doctor exited $code::${digest}"
+          else
+            echo "::notice title=doctor exited 0 — a pairing code is obtainable here::${digest}"
+          fi
+          exit "$code"
 
       - name: Prove a WhatsApp WebSocket upgrade succeeds from this runner
         run: |
