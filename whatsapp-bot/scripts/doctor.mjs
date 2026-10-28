@@ -30,16 +30,33 @@ const warn = (s) => `${C.yellow}⚠${C.reset} ${s}`;
 const head = (s) => `\n${C.cyan}${C.bold}── ${s} ${'─'.repeat(Math.max(2, 58 - s.length))}${C.reset}`;
 
 const results = [];
-function record(name, pass, detail, fix) {
-  results.push({ name, pass, detail, fix });
-  console.log(`   ${pass ? ok(name) : bad(name)}`);
+/**
+ * Record one check.
+ * `critical: false` marks a check whose failure degrades a feature but does
+ * NOT stop the bot from getting a pairing code — it is reported as a warning
+ * and excluded from the pass/fail verdict, so the exit code stays meaningful.
+ */
+function record(name, pass, detail, fix, { critical = true } = {}) {
+  results.push({ name, pass, detail, fix, critical });
+  const mark = pass ? ok(name) : (critical ? bad(name) : warn(name));
+  console.log(`   ${mark}`);
   if (detail) console.log(`     ${C.dim}${detail}${C.reset}`);
 }
 
+/**
+ * Only web.whatsapp.com carries the pairing registration, so it is the only
+ * host whose failure means "no code here". Everything else degrades a feature.
+ *
+ * g.whatsapp.com was listed here before and was WRONG: it has no public DNS
+ * record at all (ENOTFOUND) and Baileys never contacts it — its own source
+ * only references web.whatsapp.com, www.whatsapp.com and call.whatsapp.com.
+ * Treating it as a hard failure made the doctor report a perfectly good
+ * machine as broken. mmg.whatsapp.net is the real media host.
+ */
 const WA_HOSTS = [
-  { host: 'web.whatsapp.com', port: 443, why: 'WebSocket + pairing registration (the one that matters)' },
-  { host: 'g.whatsapp.com', port: 443, why: 'media upload/download servers' },
-  { host: 'pps.whatsapp.net', port: 443, why: 'profile pictures' },
+  { host: 'web.whatsapp.com', port: 443, critical: true,  why: 'WebSocket + pairing registration (the one that matters)' },
+  { host: 'mmg.whatsapp.net', port: 443, critical: false, why: 'media upload/download (stickers, audio, video)' },
+  { host: 'pps.whatsapp.net', port: 443, critical: false, why: 'profile pictures' },
 ];
 
 async function withTimeout(promise, ms, label) {
@@ -165,19 +182,24 @@ let netOk = true;
 const mitmHosts = [];
 console.log(`   ${C.dim}This is where pairing-code problems always live. Each step must pass.${C.reset}`);
 
-for (const { host, port, why } of WA_HOSTS) {
+for (const { host, port, why, critical } of WA_HOSTS) {
   // 5a DNS
   let addrs = [];
   try {
     addrs = (await withTimeout(dns.lookup(host, { all: true }), 8000, 'DNS')).map((a) => a.address);
   } catch (e) {
-    record(`DNS: ${host}`, false, e.message, 'Check your DNS (Termux: try 1.1.1.1). Some networks block WhatsApp DNS.');
-    netOk = false;
+    record(`DNS: ${host}`, false,
+      critical ? e.message : `${e.message}  ${C.dim}(only affects ${why})${C.reset}`,
+      'Check your DNS (Termux: try 1.1.1.1). Some networks block WhatsApp DNS.',
+      { critical });
+    if (critical) netOk = false;
     continue;
   }
   const v4 = addrs.filter((a) => a.includes('.'));
   const v6 = addrs.filter((a) => a.includes(':'));
-  record(`DNS: ${host}`, true, `${addrs.length} address(es) — IPv4: ${v4.length}, IPv6: ${v6.length}   ${C.dim}(${why})${C.reset}`);
+  record(`DNS: ${host}`, true,
+    `${addrs.length} address(es) — IPv4: ${v4.length}, IPv6: ${v6.length}   ${C.dim}(${why})${C.reset}`,
+    null, { critical });
 
   if (!v4.length && v6.length) {
     console.log(`   ${warn(`${host} resolved to IPv6 only — mobile networks often fail here.`)}`);
@@ -194,11 +216,12 @@ for (const { host, port, why } of WA_HOSTS) {
       s.once('error', rej);
     }), 8000, 'TCP');
   } catch (e) {
-    record(`TCP ${target}:${port}`, false, e.message, 'A firewall, VPN or restricted network is blocking outbound 443.');
-    netOk = false;
+    record(`TCP ${target}:${port}`, false, e.message,
+      'A firewall, VPN or restricted network is blocking outbound 443.', { critical });
+    if (critical) netOk = false;
     continue;
   }
-  record(`TCP ${target}:${port}`, tcpOk, 'socket established');
+  record(`TCP ${target}:${port}`, tcpOk, 'socket established', null, { critical });
 
   // 5c TLS — the check that separates "port open" from "actually usable"
   const family = v4[0] ? 4 : 6;
@@ -236,8 +259,9 @@ for (const { host, port, why } of WA_HOSTS) {
         `${e.message}  ${C.dim}(TCP opened but the encrypted handshake was killed — this is a sandbox/firewall TLS block)${C.reset}`,
         'The machine running the bot must be allowed to complete TLS to WhatsApp. ' +
         'Sandboxes, CI runners and some corporate/ISP filters do exactly this. ' +
-        'Run the bot on your own phone (Termux), PC or VPS instead.');
-      netOk = false;
+        'Run the bot on your own phone (Termux), PC or VPS instead.',
+        { critical });
+      if (critical) netOk = false;
       continue;
     }
   }
@@ -252,7 +276,7 @@ for (const { host, port, why } of WA_HOSTS) {
     mitmHosts.push(host);
     continue;
   }
-  record(`TLS handshake: ${host}`, true, `${info.protocol} — cert issued by ${info.issuer}`);
+  record(`TLS handshake: ${host}`, true, `${info.protocol} — cert issued by ${info.issuer}`, null, { critical });
 }
 
 /** how many roots beyond Node's own the system bundle adds */
@@ -277,7 +301,7 @@ if (netOk) {
     record('WebSocket upgrade to wss://web.whatsapp.com/ws/chat', true, `socket ${res} — pairing registration is possible`);
   } catch (e) {
     record('WebSocket upgrade to wss://web.whatsapp.com/ws/chat', false, e.message,
-      'Without this socket, requestPairingCode() can never reach WhatsApp.');
+      'Without this socket, requestPairingCode() can never reach WhatsApp.', { critical: true });
     netOk = false;
   }
 } else {
@@ -308,7 +332,13 @@ if (portFree) {
 }
 
 /* ═══════════ VERDICT ═══════════ */
-const failed = results.filter((r) => !r.pass);
+// Only a failure on the critical host (web.whatsapp.com) means "no code here".
+// Media/profile hosts merely degrade features, so they are reported separately
+// and must NOT flip the exit code — otherwise CI and deploy.sh would call a
+// perfectly usable machine broken.
+const failed = results.filter((r) => !r.pass && r.critical !== false);
+const degraded = results.filter((r) => !r.pass && r.critical === false);
+const passedCount = results.filter((r) => r.pass).length;
 const W = 60;
 console.log(`\n${C.bold}${'═'.repeat(W)}${C.reset}`);
 if (!failed.length) {
@@ -317,12 +347,20 @@ if (!failed.length) {
     console.log(`\n  ${C.yellow}Note:${C.reset} ${C.dim}this host intercepts TLS (${mitmHosts.join(', ')}).${C.reset}`);
     console.log(`  ${C.dim}The bot already trusts the system CA bundle, so that is not a problem.${C.reset}`);
   }
+  if (degraded.length) {
+    console.log(`\n  ${C.yellow}⚠ ${degraded.length} non-critical warning(s)${C.reset} ${C.dim}— the bot works, these features may not:${C.reset}`);
+    degraded.forEach((f) => console.log(`    • ${f.name}\n      ${C.dim}${String(f.detail).replace(/\x1b\[[0-9;]*m/g, '').slice(0, 180)}${C.reset}`));
+  }
   console.log(`\n  Run:\n    ${C.cyan}npm run pair${C.reset}\n`);
   console.log(`  Then on the phone:\n    WhatsApp ▸ Settings ▸ Linked Devices ▸ Link a Device\n    ▸ "Link with phone number instead" ▸ type the 8 characters\n`);
 } else {
-  console.log(`${C.red}${C.bold}  ❌ ${failed.length} check(s) failed — a pairing code CANNOT be issued here.${C.reset}`);
+  console.log(`${C.red}${C.bold}  ❌ ${failed.length} critical check(s) failed — a pairing code CANNOT be issued here.${C.reset}`);
   console.log(`\n  ${C.bold}What failed:${C.reset}`);
   failed.forEach((f) => console.log(`    • ${f.name}\n      ${C.dim}${String(f.detail).replace(/\x1b\[[0-9;]*m/g, '').slice(0, 220)}${C.reset}`));
+  if (degraded.length) {
+    console.log(`\n  ${C.yellow}Also degraded (not the reason pairing fails):${C.reset}`);
+    degraded.forEach((f) => console.log(`    • ${f.name}`));
+  }
   console.log(`\n  ${C.bold}How to fix it:${C.reset}`);
   [...new Set(failed.map((f) => f.fix).filter(Boolean))].forEach((f, i) => console.log(`    ${i + 1}. ${f}`));
   console.log(`\n  ${C.bold}Where it WILL work:${C.reset}`);
@@ -336,6 +374,8 @@ if (!failed.length) {
   console.log(`  ${C.dim}web.whatsapp.com will be rejected as invalid by the phone.${C.reset}`);
 }
 console.log(`${C.bold}${'═'.repeat(W)}${C.reset}`);
-console.log(`\n${C.dim}  ${results.filter((r) => r.pass).length}/${results.length} checks passed${C.reset}\n`);
+console.log(`\n${C.dim}  ${passedCount}/${results.length} checks passed` +
+  (degraded.length ? ` · ${degraded.length} non-critical warning(s)` : '') + C.reset);
+console.log(C.dim + `  exit code reflects critical checks only — non-critical warnings do not fail CI or deploy.sh` + C.reset + '\n');
 
 process.exit(failed.length ? 1 : 0);

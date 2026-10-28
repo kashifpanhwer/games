@@ -214,7 +214,7 @@ aur har machine par alag banta hai) — `npm install` use khud bana dega.
 
   npm run pair        pairing code ke saath start karein
   npm run qr          QR code scan karke login karein
-  npm run doctor      network + config check (16 checks)
+  npm run doctor      network + config check (19 checks)
   npm test            44 offline tests chalayein
   npm run preview     button menu ko bina connect kiye dekhein
   npm run clean       session delete karein (dobara pair karne ke liye)

@@ -409,9 +409,16 @@ Control panel from your phone's browser: **http://localhost:3000/?token=YOUR_TOK
 npm run doctor
 ```
 
-Runs 16 checks **in the exact order WhatsApp requires them** and tells you which one
+Runs 19 checks **in the exact order WhatsApp requires them** and tells you which one
 breaks, with the fix. It tests the network the same way Baileys does — DNS → TCP →
 **TLS handshake** → real WebSocket upgrade to `wss://web.whatsapp.com/ws/chat`:
+
+Checks have two severities. `web.whatsapp.com` carries the pairing registration, so a
+failure there is **critical** and means no code can be issued. `mmg.whatsapp.net` (media)
+and `pps.whatsapp.net` (profile pictures) are **non-critical**: a failure there is printed
+as ⚠ and does *not* change the exit code, so CI and `deploy.sh` never call a perfectly
+usable machine broken. (`g.whatsapp.com` used to be listed here — it has no public DNS
+record at all and Baileys never contacts it, so it produced false failures.)
 
 ```
 ── 1. RUNTIME ─────────────────────────────────────
@@ -436,7 +443,7 @@ breaks, with the fix. It tests the network the same way Baileys does — DNS →
   Any code produced on a machine that cannot complete TLS to
   web.whatsapp.com will be rejected as invalid by the phone.
 
-  13/16 checks passed
+  16/19 checks passed · 2 non-critical warning(s)
 ```
 
 **Why the TLS step is the one that matters:** a sandbox or firewall can happily accept
@@ -610,7 +617,7 @@ whatsapp-bot/
 | `npm run pair` | Start the bot and print the pairing code |
 | `npm run qr` | Start with QR-code login instead |
 | `npm run panel` | Web dashboard only, no WhatsApp connection |
-| `npm run doctor` | Diagnose config + network + ffmpeg (16 checks) |
+| `npm run doctor` | Diagnose config + network + ffmpeg (19 checks) |
 | `npm run termux` | Run the Termux installer |
 | `bash deploy.sh` | One-command VPS/hosting setup (PM2 / systemd / Docker / nohup) |
 | `npm run preview` | Render the button menu offline |
