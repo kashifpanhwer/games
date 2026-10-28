@@ -185,6 +185,102 @@ resends the same content as text, so **nobody ever gets a blank message**.
 
 ---
 
+## 📱 Running on Termux (Android)
+
+This is the easiest way to keep the bot online 24/7 without a PC or VPS.
+One command does everything — packages, ffmpeg, `.env`, dependencies, network
+diagnosis, and finally the pairing code:
+
+```bash
+pkg install -y git
+git clone https://github.com/kashifpanhwer/games
+cd games/whatsapp-bot
+bash scripts/install-termux.sh
+```
+
+The installer will:
+
+1. acquire a **wake-lock** so Android does not kill the process
+2. link shared storage (`termux-setup-storage`)
+3. install `nodejs-lts`, `git`, `ffmpeg`, `python`, `libwebp`
+4. create `.env`, **ask for your number**, and randomise `PANEL_TOKEN`
+5. run `npm install`
+6. run `npm run doctor` and tell you if the network will work
+7. start the bot and print your pairing code
+
+### ⚠️ Do this once or Android will kill the bot
+
+| Step | Where |
+|---|---|
+| **Acquire wakelock** | Termux notification ▸ tap it |
+| **Battery ▸ Unrestricted** | Android Settings ▸ Apps ▸ Termux |
+| Don't swipe Termux away from recents | until the two above are done |
+
+### Keep it alive after closing Termux
+
+```bash
+pkg install -y termux-services
+nohup npm run pair > bot.log 2>&1 &     # survives closing the app
+tail -f bot.log                         # watch the log
+```
+
+Control panel from your phone's browser: **http://localhost:3000/?token=YOUR_TOKEN**
+
+### Termux gotchas
+
+- **IPv6-only mobile networks** — WhatsApp hosts often resolve to IPv6 first and fail.
+  Fix: `node --dns-result-order=ipv4first index.js --pair`
+- **`ffmpeg` without libwebp** — stickers break. Fix: `pkg uninstall ffmpeg && pkg install ffmpeg libwebp`
+- **Number format** — always `923xxxxxxxxx`, never `03xxxxxxxxx`. The installer converts it for you.
+- **Storage** — `pkg install termux-api` if you want the bot to read files from `~/storage/shared`
+
+---
+
+## ⚕️ Doctor — "my pairing code is not appearing"
+
+```bash
+npm run doctor
+```
+
+Runs 16 checks **in the exact order WhatsApp requires them** and tells you which one
+breaks, with the fix. It tests the network the same way Baileys does — DNS → TCP →
+**TLS handshake** → real WebSocket upgrade to `wss://web.whatsapp.com/ws/chat`:
+
+```
+── 1. RUNTIME ─────────────────────────────────────
+   ✔ Node.js >= 20            running v22.22.3
+── 2. PROJECT FILES ───────────────────────────────
+   ✔ node_modules installed   @whiskeysockets/baileys present
+   ✔ .env exists              32 keys read
+── 3. CONFIGURATION ───────────────────────────────
+   ✔ PAIRING_NUMBER valid     +923145396910 (12 digits)
+   ⚠ PANEL_TOKEN is still the default — change it
+── 4. MEDIA PIPELINE (ffmpeg) ─────────────────────
+   ✔ drawtext filter          ✔ libwebp   ✔ libx264
+── 5. NETWORK TO WHATSAPP ─────────────────────────
+   ✔ DNS: web.whatsapp.com    IPv4: 1, IPv6: 1
+   ✔ TCP 57.144.217.32:443    socket established
+   ✖ TLS handshake            disconnected before secure TLS connection
+── 6. WEB PANEL ───────────────────────────────────
+   ✔ port 3000 available
+
+  ❌ 1 check failed — a pairing code CANNOT be issued here.
+  A pairing code is issued by WhatsApp's servers, not generated locally.
+  Any code produced on a machine that cannot complete TLS to
+  web.whatsapp.com will be rejected as invalid by the phone.
+
+  13/16 checks passed
+```
+
+**Why the TLS step is the one that matters:** a sandbox or firewall can happily accept
+the TCP connection on port 443 and then reset it during the TLS handshake. A port check
+says "open"; only the TLS + WebSocket test proves the machine can actually register with
+WhatsApp. That is why a code generated on such a machine never works.
+
+If doctor is green, `npm run pair` will print a real code within a few seconds.
+
+---
+
 ## 🧩 Advanced features
 
 **Plugin architecture with hot reload** — drop a `.js` file into `plugins/` and it is
@@ -321,10 +417,25 @@ whatsapp-bot/
 │   └── anti-features.js     anti-link, anti-delete, anti-view-once
 ├── plugins/                 11 plugin files → 121 commands
 ├── scripts/
+│   ├── install-termux.sh    one-command Android/Termux setup
+│   ├── doctor.mjs           network + config diagnosis (why no code?)
 │   ├── preview-menu.mjs     render the button menu offline
 │   └── clean-session.js     wipe the session (and optionally the database)
 └── test/smoke.mjs           offline test harness
 ```
+
+### npm scripts
+
+| Script | What it does |
+|---|---|
+| `npm run pair` | Start the bot and print the pairing code |
+| `npm run qr` | Start with QR-code login instead |
+| `npm run panel` | Web dashboard only, no WhatsApp connection |
+| `npm run doctor` | Diagnose config + network + ffmpeg (16 checks) |
+| `npm run termux` | Run the Termux installer |
+| `npm run preview` | Render the button menu offline |
+| `npm test` | 39 offline checks against a mock socket |
+| `npm run clean` | Delete the session so you can re-pair |
 
 ---
 

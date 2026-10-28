@@ -228,6 +228,7 @@ async function requestPairing(client, state) {
     printPairingCode(pretty, number);
   } catch (err) {
     const msg = err?.message || String(err);
+    const status = err?.output?.statusCode || err?.statusCode || err?.data?.statusCode;
     connState.lastError = `pairing failed: ${msg}`;
     connState.status = 'pair-failed';
     pairFailCount += 1;
@@ -237,7 +238,20 @@ async function requestPairing(client, state) {
     if (pairFailCount <= 2) printPairingFailure(msg);
     else if (pairFailCount === 3) pushLog('warn', `Still cannot reach WhatsApp — retrying silently (attempt #${pairFailCount}).`);
     pairingRequested = true;
-    scheduleRestart('qr');
+
+    // Only switch to QR when WhatsApp itself refused the registration
+    // (401/403 = bad number or account restriction). A transport-level
+    // failure means neither code nor QR can work yet, so stay in pair mode
+    // and keep retrying — that way the code appears as soon as the network
+    // comes back, without the user having to restart anything.
+    const registrationRefused = [401, 403].includes(Number(status));
+    if (registrationRefused) {
+      pushLog('warn', 'WhatsApp refused the pairing registration — falling back to QR mode.');
+      pushLog('warn', 'Check the number (country code, digits only) or that it is not already linked.');
+      scheduleRestart('qr');
+    } else {
+      scheduleRestart('pair');
+    }
   }
 }
 
