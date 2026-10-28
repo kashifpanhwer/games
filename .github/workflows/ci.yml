@@ -1,0 +1,87 @@
+# ══════════════════════════════════════════════════════════════════
+#  CI — proves the bot is healthy on a clean machine
+#
+#  This is the legitimate use of GitHub Actions: testing the software
+#  that lives in this repository. It runs on every push and PR.
+#
+#  Why it matters for YOU specifically:
+#  GitHub's runners have unrestricted internet, so `npm run doctor`
+#  here completes a REAL TLS handshake to web.whatsapp.com — the exact
+#  step that is blocked in a sandboxed workspace. A green run is proof
+#  the code can obtain a pairing code on any normal network.
+# ══════════════════════════════════════════════════════════════════
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test & diagnose (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+
+    defaults:
+      run:
+        working-directory: whatsapp-bot
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: whatsapp-bot/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Show the bundled ffmpeg capabilities
+        run: |
+          node -e "console.log(require('@ffmpeg-installer/ffmpeg').path)"
+          npx --no-install ffmpeg -hide_banner -filters 2>/dev/null | grep -E 'drawtext|palettegen' || true
+
+      - name: Offline test suite (40 checks)
+        run: npm test
+
+      - name: Render the button menu (no WhatsApp connection needed)
+        run: npm run preview
+
+      # Network is expected to WORK on a GitHub runner, so this must pass.
+      # If it ever fails here, WhatsApp changed something or the runner is
+      # being filtered — either way you want to know before deploying.
+      - name: Doctor — real network + TLS handshake to WhatsApp
+        run: npm run doctor
+        env:
+          NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
+
+      - name: Prove a WhatsApp WebSocket upgrade succeeds from this runner
+        run: |
+          node --input-type=module -e "
+            import WebSocket from 'ws';
+            const ws = new WebSocket('wss://web.whatsapp.com/ws/chat', {
+              headers: { Origin: 'https://web.whatsapp.com' },
+              handshakeTimeout: 15000,
+            });
+            const die = (m, code) => { console.log(m); process.exit(code); };
+            ws.once('open', () => { ws.terminate(); die('✔ WebSocket upgrade to web.whatsapp.com succeeded — a pairing code is obtainable from this runner', 0); });
+            ws.once('unexpected-response', (_r, r) => die('✖ HTTP ' + r.statusCode + ' instead of an upgrade', 1));
+            ws.once('error', (e) => die('✖ ' + e.message, 1));
+            setTimeout(() => die('✖ timed out', 1), 20000);
+          "

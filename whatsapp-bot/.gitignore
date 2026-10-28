@@ -1,0 +1,24 @@
+# Secrets & local config
+.env
+.env.local
+*.env.local
+
+# WhatsApp auth state / session (NEVER commit this - it contains your keys)
+sessions/
+auth/
+creds.json
+
+# Temp + media caches
+tmp/
+temp/
+*.log
+logs/
+
+# Node
+node_modules/
+package-lock.json
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db

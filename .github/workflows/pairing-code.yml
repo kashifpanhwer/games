@@ -1,0 +1,168 @@
+# ══════════════════════════════════════════════════════════════════
+#  ONE-SHOT PAIRING CODE  (manual trigger only — "Run workflow")
+# ══════════════════════════════════════════════════════════════════
+#  WHAT THIS IS FOR
+#    A sandboxed workspace or a locked-down network can block the TLS
+#    handshake to web.whatsapp.com, so no pairing code is ever issued.
+#    GitHub's runners have normal internet. This job boots the bot there,
+#    prints the 8-character code in the log, waits for you to link your
+#    phone, and then STOPS.
+#
+#  WHAT THIS IS *NOT* FOR
+#    ❌ It is NOT hosting. The runner is destroyed when the job ends, so
+#       the bot goes offline with it. Run the bot for real on a VPS,
+#       KataBump, Render/Railway, Docker or Termux — see whatsapp-bot/README.md.
+#
+#    ❌ Do NOT put this on a schedule. GitHub's terms restrict Actions to
+#       "the production, testing, deployment, or publication of the software
+#       project associated with the repository", and a permanently-running
+#       bot is outside that. Penalty: jobs terminated, Actions restricted,
+#       repository disabled, or the account suspended. Keep this manual.
+#
+#  🔐 SECURITY
+#    `upload_session` saves your WhatsApp LOGIN CREDENTIALS as a build
+#    artifact so you can continue on your own host without re-pairing.
+#    On a PUBLIC repository anyone can download artifacts — that means
+#    anyone could take over the WhatsApp account. Leave it OFF unless the
+#    repo is private, and delete the artifact as soon as you have it.
+# ══════════════════════════════════════════════════════════════════
+name: Get pairing code (one-shot)
+
+on:
+  workflow_dispatch:
+    inputs:
+      phone_number:
+        description: 'WhatsApp number, country code first, digits only (923145396910)'
+        required: true
+        default: '923145396910'
+      wait_minutes:
+        description: 'How long to stay up while you link the phone (max 10)'
+        required: true
+        default: '6'
+      upload_session:
+        description: '⚠️ Save login credentials as an artifact (private repos only!)'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pairing          # never run two pairing jobs at once
+  cancel-in-progress: false
+
+jobs:
+  pair:
+    name: Request a pairing code for ${{ inputs.phone_number }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: whatsapp-bot
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: whatsapp-bot/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Write .env for this run
+        env:
+          NUM: ${{ inputs.phone_number }}
+          GEMINI: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          cp .env.example .env
+          TOKEN=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-20)
+          {
+            echo "PAIRING_NUMBER=$NUM"
+            echo "OWNER_NUMBER=$NUM"
+            echo "PANEL_TOKEN=$TOKEN"
+            echo "PANEL_PORT=3000"
+            echo "AUTH_MODE=pair"
+            [ -n "$GEMINI" ] && echo "GEMINI_API_KEY=$GEMINI"
+          } >> .env
+          echo "PANEL_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Confirm this runner can reach WhatsApp
+        run: npm run doctor
+        env:
+          NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
+
+      - name: Start the bot
+        run: |
+          nohup node --dns-result-order=ipv4first index.js --pair > ../bot.log 2>&1 &
+          echo $! > ../bot.pid
+          for i in $(seq 1 40); do
+            curl -fsS "http://127.0.0.1:3000/healthz?token=$PANEL_TOKEN" >/dev/null 2>&1 && break
+            sleep 1
+          done
+          echo "bot started (pid $(cat ../bot.pid))"
+
+      - name: Wait for the pairing code and print it
+        env:
+          WAIT: ${{ inputs.wait_minutes }}
+        run: |
+          deadline=$(( $(date +%s) + WAIT * 60 ))
+          shown=""
+          echo "### ⚡ Your pairing code" >> "$GITHUB_STEP_SUMMARY"
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            state=$(curl -fsS "http://127.0.0.1:3000/api/state?token=$PANEL_TOKEN" || echo '{}')
+            code=$(printf '%s' "$state" | node -pe 'try{JSON.parse(require("fs").readFileSync(0,"utf8")).pairingCodePretty||""}catch(e){""}')
+            status=$(printf '%s' "$state" | node -pe 'try{JSON.parse(require("fs").readFileSync(0,"utf8")).status||""}catch(e){""}')
+
+            if [ -n "$code" ] && [ "$code" != "$shown" ]; then
+              shown="$code"
+              echo ""
+              echo "╔════════════════════════════════════════════════╗"
+              echo "║   PAIRING CODE  →   $code"
+              echo "╚════════════════════════════════════════════════╝"
+              echo ""
+              echo "  Phone: WhatsApp ▸ Settings ▸ Linked Devices ▸ Link a Device"
+              echo "         ▸ 'Link with phone number instead' ▸ type: $code"
+              echo "  The code expires in about 60 seconds — a new one appears automatically."
+              echo ""
+              echo "> ### 🔑 \`$code\`" >> "$GITHUB_STEP_SUMMARY"
+              echo "> Link a Device ▸ *Link with phone number instead* ▸ type the code." >> "$GITHUB_STEP_SUMMARY"
+              echo "> Expires in ~60s; a fresh one is printed below as they rotate." >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            if [ "$status" = "open" ]; then
+              echo ""
+              echo "✅ LINKED — WhatsApp accepted the pairing. Session credentials are saved."
+              echo "✅ **Linked successfully.**" >> "$GITHUB_STEP_SUMMARY"
+              break
+            fi
+            sleep 5
+          done
+
+          if [ "$status" != "open" ]; then
+            echo ""
+            echo "⏹  Time is up and the phone was not linked. Nothing was saved."
+            echo "⏹ Not linked within the time limit." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "─── last 40 log lines ───"
+          tail -40 ../bot.log || true
+
+      - name: Stop the bot
+        if: always()
+        run: |
+          kill -TERM "$(cat ../bot.pid)" 2>/dev/null || true
+          sleep 5
+          kill -KILL "$(cat ../bot.pid)" 2>/dev/null || true
+
+      - name: Upload session credentials
+        if: ${{ inputs.upload_session }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: whatsapp-session
+          path: whatsapp-bot/sessions/
+          retention-days: 1        # auto-deleted after 24h
+          if-no-files-found: error

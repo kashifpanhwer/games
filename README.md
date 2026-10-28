@@ -1,54 +1,43 @@
-<!DOCTYPE html><html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Click the Box Game</title>
-    <style>
-        body {
-            text-align: center;
-            font-family: Arial, sans-serif;
-        }
-        #gameArea {
-            width: 400px;
-            height: 400px;
-            border: 2px solid black;
-            margin: auto;
-            position: relative;
-            overflow: hidden;
-        }
-        .box {
-            width: 50px;
-            height: 50px;
-            background-color: red;
-            position: absolute;
-            cursor: pointer;
-        }
-    </style>
-</head>
-<body>
-    <h1>Click the Box Game</h1>
-    <p>Score: <span id="score">0</span></p>
-    <div id="gameArea"></div>
-    <script>
-        let score = 0;
-        const gameArea = document.getElementById("gameArea");
-        const scoreDisplay = document.getElementById("score");function createBox() {
-        const box = document.createElement("div");
-        box.classList.add("box");
-        box.style.top = Math.random() * 350 + "px";
-        box.style.left = Math.random() * 350 + "px";
-        gameArea.appendChild(box);
+# 🎮 Kashif Tech — Projects
 
-        box.addEventListener("click", () => {
-            score++;
-            scoreDisplay.textContent = score;
-            box.remove();
-            createBox();
-        });
-    }
+| Folder | What it is |
+|---|---|
+| **[`whatsapp-bot/`](whatsapp-bot)** | ⚡ **Kashif Tech Advance Bot** — an advanced multi-device WhatsApp bot with pairing-code login, a native button menu, 121 plugins and a live web control panel |
+| [`click-the-box/`](click-the-box/index.html) | A small "Click the Box" browser game |
 
-    createBox();
-</script>
+---
 
-</body>
-</html>
+## ⚡ Kashif Tech Advance Bot
+
+The main project in this repository. Full documentation lives in
+**[`whatsapp-bot/README.md`](whatsapp-bot/README.md)**.
+
+```bash
+cd whatsapp-bot
+npm install
+cp .env.example .env     # set PAIRING_NUMBER, OWNER_NUMBER, PANEL_TOKEN
+npm run pair             # prints your 8-character WhatsApp pairing code
+npm test                 # 39 offline checks against a mock socket
+```
+
+**Highlights**
+
+- 🔑 **Pairing-code login** — no QR scan; link the bot with an 8-character code
+- 🎛️ **Native button menu** — `interactiveMessage` + `nativeFlowMessage`, with automatic
+  text fallback, plus carousel / list / text styles switchable live
+- 🧩 **121 plugins · 365 command triggers · 11 categories** — hot-reloadable with `.reload`
+- 🌐 **Web control panel** — live pairing code, QR, SSE log stream, remote restart
+- 🛡️ **Anti-link, anti-delete, anti-view-once, anti-call**, welcome/goodbye
+- 🖼️ **Real ffmpeg media pipeline** — 512×512 WebP stickers with hand-written EXIF/RIFF
+- 🔌 **AI, downloaders, Islamic tools, search, fun, group admin** command sets
+- 🧪 **Fully testable offline** — the test suite never touches the network
+
+> ⚠️ Automated WhatsApp clients can violate WhatsApp's Terms of Service and may get your
+> number banned. Use a number you can afford to lose.
+
+---
+
+## 🎮 Click the Box
+
+A single-file browser game — open [`click-the-box/index.html`](click-the-box/index.html)
+and click the red box to score.

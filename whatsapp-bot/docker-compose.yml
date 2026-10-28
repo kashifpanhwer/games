@@ -1,0 +1,30 @@
+services:
+  bot:
+    build: .
+    image: kashif-tech-advance-bot:latest
+    container_name: kashif-bot
+    restart: unless-stopped
+    ports:
+      - "3000:3000"          # web control panel
+    volumes:
+      - kashif-session:/app/sessions   # keeps you logged in across restarts
+    environment:
+      - NODE_ENV=production
+      - AUTH_MODE=pair
+      - PANEL_HOST=0.0.0.0
+      - PANEL_PORT=3000
+      # trust the host CA bundle — needed behind TLS-intercepting networks
+      - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+    env_file:
+      - path: .env
+        required: false
+    # A WhatsApp bot holds ONE live socket — do not scale this service.
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  kashif-session:

@@ -1,0 +1,237 @@
+╔══════════════════════════════════════════════════════════════════╗
+║  ⚡ KASHIF TECH ADVANCE BOT — v2.0.0                              ║
+║  START HERE  /  YAHAN SE SHURU KAREIN                             ║
+╚══════════════════════════════════════════════════════════════════╝
+
+Ye ZIP poori bot ka code hai. Ismein node_modules NAHI hai (wo 165MB hai
+aur har machine par alag banta hai) — `npm install` use khud bana dega.
+
+
+────────────────────────────────────────────────────────────────────
+ 🅰️  VPS / HOSTING PAR  (Ubuntu, Debian, CentOS — sabse aasan)
+────────────────────────────────────────────────────────────────────
+
+  1. ZIP upload karein (FileZilla, cPanel File Manager, ya scp se)
+
+  2. Extract karein:
+         unzip KashifTechAdvanceBot.zip
+         cd whatsapp-bot
+
+  3. Ek command:
+         bash deploy.sh
+
+     Ye script khud:
+       • Node 20 + ffmpeg install karegi
+       • npm install karegi
+       • .env banayegi aur aapse NUMBER poochegi
+       • network check karegi (doctor)
+       • poochegi ke bot kaise chalana hai (PM2 / systemd / Docker / nohup)
+
+  4. Pairing code dekhne ke liye:
+         pm2 logs kashif-bot              (agar PM2 chuna)
+         journalctl -u kashif-bot -f      (agar systemd chuna)
+         docker logs -f kashif-bot        (agar Docker chuna)
+         tail -f logs/bot.log             (agar nohup chuna)
+
+     Ya seedha:
+         curl -s "localhost:3000/api/pairing?token=YOUR_TOKEN"
+
+  5. Phone par:
+         WhatsApp ▸ Settings ▸ Linked Devices ▸ Link a Device
+         ▸ "Link with phone number instead"
+         ▸ 8 character ka code type karein
+
+  6. Control panel browser mein:
+         http://YOUR_SERVER_IP:3000/?token=YOUR_TOKEN
+     (agar na khule to firewall mein port 3000 allow karein: ufw allow 3000/tcp)
+
+
+────────────────────────────────────────────────────────────────────
+ 🅱️  WINDOWS PC PAR
+────────────────────────────────────────────────────────────────────
+
+  1. Node.js install karein:  https://nodejs.org  (LTS version)
+  2. ZIP extract karein, folder mein jayein
+  3. CMD ya PowerShell kholein us folder mein
+  4. Chalayein:
+         npm install
+         npm run doctor      ← network check, zaroor chalayein
+         npm run pair        ← pairing code aayega
+
+
+────────────────────────────────────────────────────────────────────
+ 🅲  TERMUX (ANDROID PHONE) PAR
+────────────────────────────────────────────────────────────────────
+
+  1. Termux install karein — F-DROID se, Play Store wala purana hai:
+         https://f-droid.org/en/packages/com.termux/
+  2. Termux kholein aur chalayein:
+         pkg install -y git unzip
+  3. ZIP ko phone mein daalein, phir:
+         cd /sdcard/Download
+         unzip KashifTechAdvanceBot.zip
+         cd whatsapp-bot
+         bash scripts/install-termux.sh
+  4. IMPORTANT — warna Android bot maar dega:
+         • Termux notification ▸ "Acquire wakelock"
+         • Settings ▸ Apps ▸ Termux ▸ Battery ▸ Unrestricted
+
+
+────────────────────────────────────────────────────────────────────
+ 🐳 DOCKER SE
+────────────────────────────────────────────────────────────────────
+
+     cd whatsapp-bot
+     docker compose up -d --build
+     docker logs -f kashif-bot
+
+  Panel:  http://localhost:3000/?token=kashiftech
+  (sessions/ volume par mount hai, isliye restart par login nahi jayega)
+
+
+────────────────────────────────────────────────────────────────────
+ 🅳  KATABUMP (FREE HOSTING) PAR
+────────────────────────────────────────────────────────────────────
+
+  dashboard.katabump.com ▸ server banayein ▸ Node.js ▸ Free plan
+
+  1. File Manager ▸ ye ZIP upload karein ▸ right-click ▸ Extract
+     (files /home/container/ mein honi chahiye)
+  2. Startup tab ▸ start command:
+         node --dns-result-order=ipv4first /home/container/index.js --pair
+     aur Node 20+ select karein
+  3. Environment tab ▸ ye variables add karein:
+         PAIRING_NUMBER      = 923145396910
+         OWNER_NUMBER        = 923145396910
+         PANEL_TOKEN         = koi random value (kashiftech NAHI)
+         NODE_EXTRA_CA_CERTS = /etc/ssl/certs/ca-certificates.crt
+  4. Console ▸ Start. Pehli baar KataBump khud npm install karega.
+  5. Pairing code Console tab mein aayega.
+
+  ⚠️ KATABUMP KI 4 BAATEIN:
+    • 308 MB RAM kam hai — OOM ho to PANEL_ENABLED=false kar dein
+    • Sirf EK public port milta hai — bot khud SERVER_PORT/PORT padh leta
+      hai, isliye PANEL_PORT set na karein
+    • Har 4 DIN mein Renew dabana zaroori hai, warna server + sessions/
+      delete ho jate hain aur dobara pair karna padega
+    • ffmpeg nahi hai aur root nahi — bundled npm ffmpeg se stickers chale
+      gein, lekin video conversion 25% CPU par slow hoga
+
+  🔑 SABSE AHEM: KataBump outbound HTTPS ko apne "Kata Root CA" se
+     dobara sign karta hai. Node us CA ko nahi janta, isliye aam bots
+     "unable to verify the first certificate" par mar jate hain aur code
+     kabhi nahi aata. YE BOT KHUD HANDLE KARTA HAI — lib/tls-agent.js
+     system ka CA bundle padh kar Baileys ko ek https.Agent deta hai.
+     Upar wala NODE_EXTRA_CA_CERTS backup hai.
+
+
+────────────────────────────────────────────────────────────────────
+ 🅴  GITHUB ACTIONS
+────────────────────────────────────────────────────────────────────
+
+  Is ZIP mein .github/workflows/ bhi shamil hai. Agar aap ye folder kisi
+  GitHub repo ke ROOT mein extract karein to workflows khud kaam karne
+  lagenge:
+
+    • CI (ci.yml) — har push/PR par: npm ci → npm test (44 checks) →
+      preview → doctor → asli WebSocket test web.whatsapp.com par.
+      GitHub runners ka internet khula hota hai, isliye ye PROOF hai ke
+      code pairing code hasil kar sakta hai.
+
+    • Get pairing code (pairing-code.yml) — SIRF manual:
+        Actions ▸ "Get pairing code (one-shot)" ▸ Run workflow
+      Code log aur job summary dono mein print hota hai, aur 10 minute
+      tak intezaar karta hai ke aap phone link karein.
+
+  ⚠️ Ye HOSTING NAHI hai:
+    • Job khatam hone par runner delete ho jata hai → bot offline
+    • Har run nayi VM par hota hai → sessions/ survive nahi karta
+    • Schedule (cron) par MAT lagana — GitHub ki terms Actions ko sirf
+      "production, testing, deployment, publication" tak mehdood karti
+      hain. Permanently chalta bot unke khilaf hai → account suspend
+      ho sakta hai. Isliye workflow manual-only rakha gaya hai.
+    • upload_session ON karne par aapki WhatsApp credentials artifact
+      mein chali jati hain. PUBLIC repo par koi bhi unhe download kar
+      sakta hai = account hijack. Sirf private repo par, aur turant
+      artifact delete karein.
+
+
+════════════════════════════════════════════════════════════════════
+ ⚠️  ZAROORI BAATEIN
+════════════════════════════════════════════════════════════════════
+
+  1. PAIRING CODE WhatsApp ka server deta hai, ye bot nahi banata.
+     Isliye jis machine par bot chalega, uska internet WhatsApp tak
+     pahunchne ke qabil hona chahiye. Check karne ke liye:
+         npm run doctor
+     Agar "TLS handshake" par ✖ aaye to us machine ka network blocked hai.
+
+  2. Code sirf ~60 second rehta hai. Expire ho jaye to:
+         npm run pair        (naya code)
+     Ya panel mein "🔄 Request new code" dabayein.
+
+  3. SHARED HOSTING (cPanel / Hostinger shared plan) PAR BOT NA CHALAYEIN.
+     Wo lambe processes ko maar dete hain. VPS, Render/Railway, Docker,
+     ya Termux use karein.
+
+  4. Number format:  923145396910   (03145396910 NAHI)
+     deploy.sh aur install-termux.sh khud convert kar dete hain.
+
+  5. sessions/ folder = aapki login credentials. Kisi ko na dein,
+     git mein commit na karein. Delete karne se dobara pair karna padega.
+
+  6. .env file mein PANEL_TOKEN default "kashiftech" hai. deploy.sh
+     khud random token bana deta hai — manual install par badal lein.
+
+
+════════════════════════════════════════════════════════════════════
+ 📦  ZIP MEIN KYA HAI
+════════════════════════════════════════════════════════════════════
+
+  index.js                  bot ka main entry point
+  package.json              dependencies + npm scripts
+  package-lock.json         exact versions (reproducible install)
+  .env                      aapki config — number already set hai
+  .env.example              documented template
+  README.md                 poori documentation (English)
+
+  src/                      core: connection, handler, database, panel, state
+  lib/                      buttons, converter (ffmpeg), scraper, uploader, tls-agent
+  plugins/                  11 files → 121 commands, 365 triggers
+  scripts/                  doctor, Termux installer, menu preview, session clean
+  deploy/                   systemd unit, Render blueprint, Railway config
+  deploy.sh                 one-command hosting setup
+  ecosystem.config.cjs      PM2 config
+  Dockerfile                Docker image
+  docker-compose.yml        Docker Compose stack
+  Procfile                  PaaS (Heroku/Render/Railway)
+  test/smoke.mjs            44 offline tests (npm test)
+
+
+════════════════════════════════════════════════════════════════════
+ 🔧  COMMON COMMANDS
+════════════════════════════════════════════════════════════════════
+
+  npm run pair        pairing code ke saath start karein
+  npm run qr          QR code scan karke login karein
+  npm run doctor      network + config check (16 checks)
+  npm test            44 offline tests chalayein
+  npm run preview     button menu ko bina connect kiye dekhein
+  npm run clean       session delete karein (dobara pair karne ke liye)
+  npm run panel       sirf web panel, WhatsApp connect nahi
+
+
+════════════════════════════════════════════════════════════════════
+ 🆘  PROBLEM HO TO
+════════════════════════════════════════════════════════════════════
+
+  Pehle hamesha ye chalayein — ye batata hai exactly kya kharab hai:
+
+      npm run doctor
+
+  Phir README.md ka "Troubleshooting" section padhein.
+
+  ⚠️ Automated WhatsApp bots Terms of Service violate kar sakte hain aur
+     number BAN ho sakta hai. Wo number use karein jo khone ka gham na ho.
+
+                                          — Kashif Tech  ⚡

@@ -1,0 +1,55 @@
+# ─────────────────────────────────────────────────────────────
+#  systemd service — the cleanest way to run the bot on a VPS
+#  (Ubuntu / Debian / CentOS). Survives reboots and crashes.
+#
+#  Install:
+#    sudo cp deploy/kashif-bot.service /etc/systemd/system/
+#    # edit WorkingDirectory + User below to match your server
+#    sudo systemctl daemon-reload
+#    sudo systemctl enable --now kashif-bot
+#
+#  Manage:
+#    sudo systemctl status kashif-bot
+#    journalctl -u kashif-bot -f          # live log (pairing code appears here)
+#    sudo systemctl restart kashif-bot
+# ─────────────────────────────────────────────────────────────
+[Unit]
+Description=Kashif Tech Advance Bot (WhatsApp)
+Documentation=https://github.com/kashifpanhwer/games/tree/main/whatsapp-bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# ── EDIT THESE TWO LINES for your server ──────────────────────
+User=root
+WorkingDirectory=/root/games/whatsapp-bot
+# ──────────────────────────────────────────────────────────────
+
+ExecStart=/usr/bin/node --dns-result-order=ipv4first index.js --pair
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+# environment
+Environment=NODE_ENV=production
+# Trust the host's CA bundle (KataBump / Zscaler / corporate TLS interception).
+# A missing file is harmless — Node just warns and carries on.
+Environment=NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+EnvironmentFile=-/root/games/whatsapp-bot/.env
+
+# logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kashif-bot
+
+# hardening (relax if the bot needs more access)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/root/games/whatsapp-bot
+
+[Install]
+WantedBy=multi-user.target

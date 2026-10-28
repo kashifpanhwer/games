@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kashif Tech Advance Bot — Control Panel</title>
+<style>
+  :root{
+    --bg:#0b1020; --card:#141b31; --card2:#0f1528; --line:#222c4a;
+    --txt:#e8ecf8; --dim:#8d99bf; --acc:#25d366; --warn:#ffb020; --err:#ff5470;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,#1b2a52 0%,var(--bg) 60%);color:var(--txt);
+       font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+  .wrap{max-width:1040px;margin:0 auto;padding:28px 18px 60px}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wrap}
+  .logo{width:46px;height:46px;border-radius:14px;background:linear-gradient(140deg,#25d366,#0ea5e9);
+        display:grid;place-items:center;font-size:24px;box-shadow:0 8px 24px rgba(37,211,102,.28)}
+  h1{font-size:20px;margin:0;letter-spacing:.2px}
+  .sub{color:var(--dim);font-size:13px}
+  .pill{margin-left:auto;display:inline-flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);
+        padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);box-shadow:0 0 0 4px rgba(255,255,255,.05)}
+  .dot.open{background:var(--acc);animation:pulse 1.6s infinite}
+  .dot.wait{background:var(--warn);animation:pulse 1.2s infinite}
+  .dot.bad{background:var(--err)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+  .card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:18px;padding:20px}
+  .card h2{margin:0 0 14px;font-size:13px;text-transform:uppercase;letter-spacing:1.4px;color:var(--dim);font-weight:700}
+  .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:44px;font-weight:800;letter-spacing:6px;
+        text-align:center;padding:22px 10px;border-radius:14px;background:#0a0f1e;border:1px dashed #2f3c66;color:#7CFCB0;
+        text-shadow:0 0 22px rgba(37,211,102,.45);word-break:break-all;user-select:all}
+  .muted{color:var(--dim);font-size:13px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  button,.btn{cursor:pointer;border:1px solid var(--line);background:#18213c;color:var(--txt);
+        padding:10px 16px;border-radius:11px;font-size:13.5px;font-weight:600;transition:.15s;text-decoration:none;display:inline-block}
+  button:hover,.btn:hover{border-color:#3b4d86;background:#1e2a4d;transform:translateY(-1px)}
+  button.primary{background:linear-gradient(135deg,#25d366,#12a150);border-color:transparent;color:#04120a}
+  button.danger{background:#3a1524;border-color:#5c2036;color:#ffb3c2}
+  button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  input,select{flex:1;min-width:150px;padding:11px 13px;border-radius:11px;border:1px solid var(--line);background:#0a0f1e;color:var(--txt);font-size:14px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-top:4px}
+  .stat{background:#0a0f1e;border:1px solid var(--line);border-radius:13px;padding:13px;text-align:center}
+  .stat b{display:block;font-size:20px;color:#fff}
+  .stat span{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.9px}
+  .log{background:#070b16;border:1px solid var(--line);border-radius:13px;padding:12px;height:290px;overflow:auto;
+       font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.7}
+  .log div{white-space:pre-wrap;word-break:break-word;border-bottom:1px solid rgba(255,255,255,.03);padding:2px 0}
+  .t-info{color:#9fb0d8}.t-warn{color:var(--warn)}.t-error{color:var(--err)}.t-ok{color:var(--acc)}.t-pair{color:#c78bff}
+  .time{color:#5a678f;margin-right:8px}
+  ol.steps{margin:10px 0 0;padding-left:20px;color:var(--dim);font-size:13.5px}
+  ol.steps li{margin:5px 0}
+  ol.steps b{color:var(--txt)}
+  .qrbox{display:grid;place-items:center;background:#fff;border-radius:14px;padding:12px;min-height:230px}
+  .qrbox img{width:100%;max-width:250px;image-rendering:pixelated}
+  .qrbox .muted{color:#5b6478}
+  .banner{border:1px solid #4a3a17;background:#241d0c;color:#ffd58a;border-radius:13px;padding:12px 14px;font-size:13px;margin-bottom:16px;display:none}
+  .banner.show{display:block}
+  footer{margin-top:26px;text-align:center;color:#5c6788;font-size:12.5px}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#12233c;border:1px solid #2b4a72;
+         color:#dff0ff;padding:11px 20px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none;font-size:13.5px;z-index:9}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  code{background:#0a0f1e;padding:1px 5px;border-radius:5px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">⚡</div>
+    <div>
+      <h1>KASHIF TECH ADVANCE BOT</h1>
+      <div class="sub">Control Panel &nbsp;•&nbsp; Baileys Multi-Device &nbsp;•&nbsp; v2.0.0</div>
+    </div>
+    <div class="pill"><span class="dot" id="dot"></span><span id="statusText">starting…</span></div>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="grid">
+
+    <!-- ── pairing code ── -->
+    <div class="card" id="pairCard">
+      <h2>🔑 Pairing Code</h2>
+      <div class="code" id="code">--------</div>
+      <div class="muted" style="text-align:center;margin-top:10px">
+        for <b id="num">—</b> &nbsp;•&nbsp; <span id="age">waiting</span>
+      </div>
+      <ol class="steps">
+        <li>Open <b>WhatsApp</b> on that phone</li>
+        <li><b>Settings ▸ Linked Devices ▸ Link a Device</b></li>
+        <li>Tap <b>“Link with phone number instead”</b></li>
+        <li>Enter the 8-character code shown above</li>
+      </ol>
+      <div class="row">
+        <button class="primary" id="copyBtn">📋 Copy code</button>
+        <button id="repairBtn">🔄 Request new code</button>
+      </div>
+      <div class="row">
+        <input id="numInput" placeholder="Different number, e.g. 923145396910">
+        <button id="changeNum">Pair this number</button>
+      </div>
+    </div>
+
+    <!-- ── QR ── -->
+    <div class="card" id="qrCard">
+      <h2>📱 QR Code Login</h2>
+      <div class="qrbox" id="qrbox"><span class="muted">No QR yet — waiting for the WhatsApp server to send one…</span></div>
+      <div class="muted" style="margin-top:10px">Use this if you prefer scanning instead of typing a code.</div>
+      <div class="row">
+        <button id="pairModeBtn">🔑 Switch to pair mode</button>
+        <button id="restartBtn2">🔄 Reconnect</button>
+      </div>
+    </div>
+
+    <!-- ── stats & controls ── -->
+    <div class="card">
+      <h2>📊 Live Statistics</h2>
+      <div class="stats">
+        <div class="stat"><b id="sUp">0s</b><span>Uptime</span></div>
+        <div class="stat"><b id="sMsg">0</b><span>Messages</span></div>
+        <div class="stat"><b id="sCmd">0</b><span>Commands</span></div>
+        <div class="stat"><b id="sPlg">0</b><span>Plugins</span></div>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <select id="menuType">
+          <option value="buttons">Menu: Buttons</option>
+          <option value="carousel">Menu: Carousel</option>
+          <option value="list">Menu: List</option>
+          <option value="text">Menu: Text</option>
+        </select>
+        <button id="menuBtn">Apply</button>
+      </div>
+      <div class="row">
+        <button id="restartBtn">🔄 Restart connection</button>
+        <button class="danger" id="logoutBtn">🗑️ Logout &amp; clear session</button>
+      </div>
+      <div class="muted" style="margin-top:12px">Logged in as: <b id="me">— not linked yet —</b></div>
+    </div>
+
+    <!-- ── logs ── -->
+    <div class="card" style="grid-column:1/-1">
+      <h2>📜 Live Log Stream</h2>
+      <div class="log" id="log"></div>
+    </div>
+
+  </div>
+
+  <footer>
+    ⚡ Kashif Tech Advance Bot — a pairing code is only valid while this process holds a live
+    encrypted connection to <code>wss://web.whatsapp.com</code>.
+  </footer>
+</div>
+
+<div class="toast" id="toast">Copied!</div>
+
+<script>
+const q = (s) => document.querySelector(s);
+const TOKEN = new URLSearchParams(location.search).get('token') || '';
+let connectedAt = null;
+let startedAt = Date.now();
+
+function toast(msg){
+  const t = q('#toast'); t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1800);
+}
+function esc(s){ return String(s||'').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+function fmtAge(ms){
+  if (ms < 0) ms = 0;
+  const s = Math.floor(ms/1000);
+  if (s < 60) return s + 's';
+  const m = Math.floor(s/60); if (m < 60) return m + 'm ' + (s%60) + 's';
+  const h = Math.floor(m/60); return h + 'h ' + (m%60) + 'm';
+}
+
+function applyState(st){
+  q('#statusText').textContent = st.status || 'unknown';
+  startedAt = st.startedAt || startedAt;
+  connectedAt = st.connectedAt;
+
+  const d = q('#dot');
+  const waiting = ['awaiting-pair','pairing','qr','connecting'].includes(st.status);
+  d.className = 'dot' + (st.status === 'open' ? ' open' : (waiting ? ' wait' : ' bad'));
+
+  q('#me').textContent = st.me ? ('+' + st.me.number + '  (' + st.me.name + ')') : '— not linked yet —';
+  q('#sMsg').textContent = st.counters?.messages || 0;
+  q('#sCmd').textContent = st.counters?.commands || 0;
+  q('#sPlg').textContent = st.counters?.plugins || 0;
+
+  if (st.pairingCodePretty) {
+    q('#code').textContent = st.pairingCodePretty;
+    q('#pairCard').style.borderColor = '#2c5c40';
+  } else if (st.status === 'open') {
+    q('#code').textContent = 'LINKED ✅';
+  } else if (st.status === 'pair-failed') {
+    q('#code').textContent = 'UNAVAILABLE';
+  }
+
+  if (st.pairingNumber) q('#num').textContent = '+' + st.pairingNumber;
+
+  if (st.qrDataUrl) q('#qrbox').innerHTML = '<img alt="WhatsApp QR code" src="' + st.qrDataUrl + '">';
+  else if (st.status === 'open') q('#qrbox').innerHTML = '<span class="muted">✅ Device linked — no QR needed.</span>';
+
+  const banner = q('#banner');
+  if (st.lastError && ['pair-failed','closed','loggedOut'].includes(st.status)) {
+    banner.classList.add('show');
+    banner.innerHTML = '⚠️ <b>' + esc(st.status) + '</b> — ' + esc(st.lastError) +
+      '<br><br>A pairing code can only be issued while the bot can reach <code>wss://web.whatsapp.com</code>. ' +
+      'Check the network/firewall of the machine running the bot, then press <b>🔄 Reconnect</b>.';
+    q('#age').textContent = 'code request failed';
+  } else {
+    banner.classList.remove('show');
+  }
+}
+
+function addLog(e){
+  const box = q('#log');
+  const div = document.createElement('div');
+  div.className = 't-' + (e.level || 'info');
+  const t = new Date(e.t).toISOString().slice(11,19);
+  div.innerHTML = '<span class="time">' + t + '</span>' + esc(e.message);
+  box.appendChild(div);
+  while (box.children.length > 400) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+
+async function api(path, opts = {}){
+  const sep = path.includes('?') ? '&' : '?';
+  try {
+    const r = await fetch(path + sep + 'token=' + encodeURIComponent(TOKEN), opts);
+    return await r.json();
+  } catch { return { ok:false }; }
+}
+
+function connect(){
+  const es = new EventSource('/api/events?token=' + encodeURIComponent(TOKEN));
+  es.addEventListener('state', ev => applyState(JSON.parse(ev.data)));
+  es.addEventListener('log', ev => addLog(JSON.parse(ev.data)));
+  es.addEventListener('pairing', ev => {
+    const p = JSON.parse(ev.data);
+    if (p.pretty) { q('#code').textContent = p.pretty; toast('🔑 New pairing code: ' + p.pretty); }
+  });
+}
+
+q('#copyBtn').onclick = async () => {
+  const raw = q('#code').textContent.replace(/-/g,'');
+  if (raw.length !== 8) return toast('No code available yet');
+  try { await navigator.clipboard.writeText(raw); toast('Copied ' + raw); }
+  catch { toast('Copy blocked — select the code manually'); }
+};
+q('#repairBtn').onclick = async () => {
+  const n = (q('#num').textContent || '').replace(/\D/g,'');
+  toast('Requesting a new code…');
+  await api('/api/pair?number=' + encodeURIComponent(n), { method:'POST' });
+};
+q('#changeNum').onclick = async () => {
+  const n = q('#numInput').value.replace(/\D/g,'');
+  if (n.length < 8) return toast('Enter the full number with country code');
+  await api('/api/pair?number=' + encodeURIComponent(n), { method:'POST' });
+  toast('Re-pairing +' + n);
+};
+q('#pairModeBtn').onclick = async () => { await api('/api/restart', { method:'POST' }); toast('Restarting in pair mode'); };
+q('#restartBtn').onclick  = async () => { await api('/api/restart', { method:'POST' }); toast('Restarting connection…'); };
+q('#restartBtn2').onclick = async () => { await api('/api/restart', { method:'POST' }); toast('Reconnecting…'); };
+q('#logoutBtn').onclick   = async () => { if (confirm('Delete the session and log out?')) { await api('/api/logout', { method:'POST' }); toast('Logged out'); } };
+q('#menuBtn').onclick     = async () => { await api('/api/menu?type=' + q('#menuType').value, { method:'POST' }); toast('Menu style saved'); };
+
+setInterval(() => {
+  q('#sUp').textContent = connectedAt ? fmtAge(Date.now() - connectedAt) : fmtAge(Date.now() - startedAt);
+  const c = q('#code').textContent;
+  if (/^\d/.test(c) || /^[A-Z0-9]{4}-/.test(c)) {
+    const issued = window.__issuedAt;
+    if (issued) q('#age').textContent = 'issued ' + fmtAge(Date.now() - issued) + ' ago';
+  }
+}, 1000);
+
+connect();
+api('/api/state').then(s => { if (s && s.status) { applyState(s); (s.logs||[]).forEach(addLog); window.__issuedAt = s.pairingIssuedAt; } });
+api('/api/commands').then(c => { if (c && c.total) q('#sPlg').textContent = c.total; });
+</script>
+</body>
+</html>
